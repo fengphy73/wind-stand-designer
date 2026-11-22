@@ -14,6 +14,11 @@ const names = lay.sheets.flatMap(s => s.items.map(i => i.part.name));
 ok(names.filter(n => n.startsWith('壁板')).length === 4, '壁板 4 片');
 ok(names.filter(n => n === '內隔板').length === 2, '隔板 2 片（另有備品）');
 ok(names.filter(n => n === '三角補強片').length === 4, '補強片 4 片');
+ok(names.includes('上層板（轉動）') && names.includes('下層板（固定）') && !names.some(n => n.includes('平台')), '上下層全長板取代平台');
+const up = lay.sheets.flatMap(s => s.items).find(i => i.part.id === 'upper').part;
+const lo = lay.sheets.flatMap(s => s.items).find(i => i.part.id === 'lower').part;
+ok(up.holes.length === 19 && lo.holes.length === 9, `上層孔 ${up.holes.length}（含 12 個 M4）、下層孔 ${lo.holes.length}`);
+ok(Math.abs(up.w - 190) < 0.1 && Math.abs(up.h - 100) < 0.1 && Math.abs(lo.w - up.w) < 0.1, '兩層板同為 190×100');
 let overlap = 0, outside = 0;
 for (const sh of lay.sheets) {
   const bs = sh.items.map(it => ({n: it.part.name, ...sheetBounds(it)}));

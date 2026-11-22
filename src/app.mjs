@@ -236,7 +236,9 @@ function paint2d() {
     <div class="sf" style="margin-top:8px">${rows}</div>
     ${warns.map(w => `<div class="warn">${w}</div>`).join('') || '<div class="oknote">以轉盤頂面為準，葉尖、尾翼、底座角與最高點都在 Ø100 cm × 高 100 cm 圓柱內。</div>'}
     ${ground}
-    <p class="note">25 倍建議葉長 ${fit.blade} mm、輪轂高 ${fit.hubZ} mm；30 倍葉長同樣 ${fit.blade} mm（懸伸不變），塔頂會再低 5 mm，因為主軸中心高 85 而不是 80。目前是 ${state.gear} 倍，塔頂面 ${spec.zT} mm，柱身（含下榫）${spec.wallLen} mm，隔板在 ${spec.diaZ.map(z => z.toFixed(1)).join('、')} mm。</p>
+    <p class="note">v1.1 塔頂是兩片 ${spec.deck.len}×${spec.deck.wid} 全長板，中間夾 3 寸轉盤（轉 ${spec.deck.turnDeg}°）。偏航軸在板前緣後方 ${spec.deck.yawFromFront} mm，懸伸 ${spec.overhang} mm。上層板有 ${spec.deck.holes} 個 M4 孔，對齊齒輪底板；兩層穿線開口 ${spec.deck.opening.w}×${spec.deck.opening.h}，中心都在偏航軸。</p>
+    <p class="note">${spec.turnNote}</p>
+    <p class="note">25 倍與 30 倍建議葉長都是 ${fit.blade} mm、輪轂高 ${fit.hubZ} mm。30 倍主軸高 5 mm，塔頂面會再低 5 mm。目前是 ${state.gear} 倍，下層板頂 ${spec.zT} mm，柱身（含下榫）${spec.wallLen} mm，隔板在 ${spec.diaZ.map(z => z.toFixed(1)).join('、')} mm。</p>
     <p class="note">塔重 <b data-k="tower">${Math.round(spec.towerMass)}</b> g，整機 <b data-k="total">${Math.round(spec.totalMass)}</b> g（密度 ${state.density} g/cm³，上半部沿用 ${spec.upper} g）。4 m/s 塔頂撓度 <b data-k="defl">${spec.deflTop.toFixed(3)}</b> mm。葉尖離底板 ${cl.abovePlate.toFixed(0)} mm，扣彎曲預留後 ${cl.abovePlateAfter.toFixed(0)} mm。葉根後緣距齒輪前緣 ${cl.rootGap.toFixed(1)} mm。</p>
     <table class="compare"><thead><tr><th></th><th>目前</th><th>calcD.json 原假設（隔板 4、葉長 380、輪轂 480、塔頂 80）</th></tr></thead><tbody>
       <tr><td>塔重 g</td><td>${Math.round(spec.towerMass)}</td><td>${Math.round(ref.towerMass)}</td></tr>
@@ -267,7 +269,7 @@ function paint2d() {
     <tr><td>上半部（齒輪、葉片、尾、轉盤下板）</td><td>${spec.upper}</td><td>沿用方案 D，不隨葉長增減</td></tr>
     <tr><td>合計</td><td>${Math.round(spec.totalMass)}</td><td>4 m/s 安全係數 ${sf4.toFixed(2)}</td></tr>
     </tbody></table>
-    <p class="note">雷切：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、塔頂兩層 ${spec.topSize}×${spec.topSize}、底板 ${state.base}、平台 250×110、尾桿 365×30、限位擋塊（可選）。列印：加長輪轂（半徑 ${HUB_R}、加長 ${75}）、限位環、擋銷、尾桿座。外購：3 寸全珠轉盤、M4、木工膠。尾翼用 3 mm 塑膠瓦楞板，不雷切。</p>`;
+    <p class="note">雷切：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、上下層板各 1（${spec.deck.len}×${spec.deck.wid}）、底板 ${state.base}、尾桿 365×30、限位擋塊（可選）。上層用 M4×12 鎖執行長的齒輪組。列印：加長輪轂（半徑 ${HUB_R}、加長 75）、限位環、擋銷、尾桿座。外購：3 寸全珠轉盤、M4、木工膠。尾翼用 3 mm 塑膠瓦楞板。</p>`;
 }
 
 function clearGroup(g) {
@@ -344,7 +346,7 @@ function addSchematic() {
   // 齒輪組示意（不修改執行長的設計，只標位置）
   const gear = new THREE.Group();
   const plate = new THREE.Mesh(new THREE.BoxGeometry(GEAR_PLATE.len, GEAR_PLATE.wid, GEAR_PLATE.thick), new THREE.MeshStandardMaterial({color: 0x8aa0b2, transparent: true, opacity: 0.85}));
-  plate.position.set(GEAR_FRONT_X - GEAR_PLATE.len / 2, 0, spec.platTop + spec.T + GEAR_PLATE.thick / 2);
+  plate.position.set(GEAR_FRONT_X - GEAR_PLATE.len / 2, 0, spec.zUpperTop + GEAR_PLATE.thick / 2);
   gear.add(plate);
   const shaft = new THREE.Mesh(new THREE.CylinderGeometry(p.shaftD / 2, p.shaftD / 2, 70, 16), new THREE.MeshStandardMaterial({color: 0x667, metalness: 0.6, roughness: 0.3}));
   shaft.rotation.z = Math.PI / 2;

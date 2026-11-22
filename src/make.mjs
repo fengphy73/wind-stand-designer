@@ -1,7 +1,8 @@
 // 雷切輪廓、900×600 排版、3D 列印實體。紅線切割、藍線雕刻，單位 mm，不另做縮放。
 import {
   COLLAR, COL_TENON_W, DIA_TENON_W, DIA_HOLE, GUSSET_H, GUSSET_LEG, GUSSET_TENON,
-  HUB_LEN, HUB_R, PLAT, ROTOR_X, SHEET, TOP_HOLE, TURN, WIRE, BOOM, GEAR_FRONT_X, GEAR_PLATE,
+  HUB_LEN, HUB_R, ROTOR_X, SHEET, TURN, WIRE, BOOM, GEAR_FRONT_X, GEAR_PLATE,
+  GEAR_HOLE_X, GEAR_HOLE_Y, GEAR_OPENING,
 } from './calc.mjs';
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -180,29 +181,33 @@ export function laserParts(spec) {
   const colHole = rect(-(spec.OUT + 0.4) / 2, -(spec.OUT + 0.4) / 2, (spec.OUT + 0.4) / 2, (spec.OUT + 0.4) / 2);
   push(part('collar', '柱腳套框', 1, col, [colHole], [{kind: 'text', text: '套框', x: 0, y: COLLAR / 2 - 8}], '套框'));
 
-  const S = spec.topSize;
-  const top = rect(-S / 2, -S / 2, S / 2, S / 2);
-  const center = circlePts(0, 0, TOP_HOLE / 2, 48);
+  const yawX = GEAR_FRONT_X;
+  const opening = roundPoly(yawX - GEAR_OPENING.w / 2, -GEAR_OPENING.h / 2, GEAR_OPENING.w, GEAR_OPENING.h, 3);
+  const gearHoles = [];
+  for (const x of GEAR_HOLE_X) for (const s of [1, -1]) gearHoles.push(circlePts(x, s * GEAR_HOLE_Y, 2.1, 20));
+  const turnHoles = (angles) => angles.map(a => {
+    const r = a * Math.PI / 180;
+    return circlePts(yawX + Math.cos(r) * TURN.boltR, Math.sin(r) * TURN.boltR, 2.1, 20);
+  });
+  const upper = deckGeom();
+  push(part('upper', '上層板（轉動）', 1, upper, [opening, ...gearHoles, ...turnHoles([45, 135, 225, 315]), circlePts(168, -12, 2.1, 16), circlePts(182, 12, 2.1, 16)], [
+    {kind: 'text', text: '上層·迎風', x: 16, y: 0},
+    {kind: 'text', text: 'M4×12 對齒輪底板', x: 70, y: 46},
+  ], '上層'));
   const tenonHoles = [];
   for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
-    const cx = dx * cWall, cy = dy * cWall;
+    const cx = yawX + dx * cWall, cy = dy * cWall;
     if (dy !== 0) tenonHoles.push(rect(cx - slotW / 2, cy - slotT / 2, cx + slotW / 2, cy + slotT / 2));
     else tenonHoles.push(rect(cx - slotT / 2, cy - slotW / 2, cx + slotT / 2, cy + slotW / 2));
   }
   const nuts = [0, 90, 180, 270].map(a => {
     const r = a * Math.PI / 180;
-    return hex(Math.cos(r) * TURN.boltR, Math.sin(r) * TURN.boltR, 7.2);
+    return hex(yawX + Math.cos(r) * TURN.boltR, Math.sin(r) * TURN.boltR, 7.2);
   });
-  const bolts = [0, 90, 180, 270].map(a => {
-    const r = a * Math.PI / 180;
-    return circlePts(Math.cos(r) * TURN.boltR, Math.sin(r) * TURN.boltR, 2.1, 24);
-  });
-  push(part('top-lo', '塔頂板下層', 1, top, [center, ...tenonHoles, ...nuts], [{kind: 'text', text: '下層', x: 0, y: S / 2 - 8}], '塔頂下'));
-  push(part('top-hi', '塔頂板上層', 1, top, [center, ...bolts], [{kind: 'text', text: '上層', x: 0, y: S / 2 - 8}], '塔頂上'));
-
-  // 偏航平台：長度沿本地 x（迎風端 x 大）。圖紙上照輪廓切。
-  const plat = platformGeom(spec);
-  push(part('plat', '偏航平台板', 1, plat.outline, plat.holes, plat.eng, '平台'));
+  const lower = deckGeom();
+  push(part('lower', '下層板（固定）', 1, lower, [opening, ...tenonHoles, ...nuts], [
+    {kind: 'text', text: '下層·接方柱', x: 16, y: 0},
+  ], '下層'));
 
   const boom = boomGeom(spec);
   push(part('boom', '尾桿', 1, boom.outline, boom.holes, boom.eng, '尾桿'));
@@ -227,35 +232,9 @@ function roundPoly(x, y, w, h, rad) {
   return ccw(pts);
 }
 
-function platformGeom(spec) {
-  // 本地：x = 0 在順風端、x = 250 在迎風端，y = ±55。偏航軸在距迎風端 122.5。
-  const L = PLAT.len, W = PLAT.wid;
-  const outline = rect(0, -W / 2, L, W / 2);
-  const yawX = 122.5, yawY = 0;
-  const holes = [circlePts(yawX, yawY, PLAT.hole / 2, 40)];
-  for (const a of [45, 135, 225, 315]) {
-    const r = a * Math.PI / 180;
-    holes.push(circlePts(yawX + TURN.boltR * Math.cos(r), yawY + TURN.boltR * Math.sin(r), 2.1, 20));
-  }
-  // 齒輪底板足跡：前緣在偏航軸前方 102.5，長 190、寬 100。本地 x 迎風為正方向（x 越大越迎風）。
-  const gearFront = yawX + (GEAR_FRONT_X - 0); // 偏航軸在 yawX，迎風 +x
-  // 世界 +X 迎風對應本地 +x。齒輪前緣世界 x=102.5，偏航軸世界 0，所以本地 = yawX + 102.5。
-  // 但平台只有 250，yawX=122.5，前緣會在 225，後緣在 225-190=35。都在 0..250 內。
-  const gf = yawX + GEAR_FRONT_X;
-  const gr = gf - GEAR_PLATE.len;
-  const gy = GEAR_PLATE.wid / 2;
-  // 四個固定孔，內縮 16
-  for (const [x, y] of [[gf - 16, gy - 16], [gf - 16, -gy + 16], [gr + 16, gy - 16], [gr + 16, -gy + 16]]) {
-    holes.push(circlePts(x, y, 2.1, 20));
-  }
-  // 尾桿座兩孔，靠近順風端
-  holes.push(circlePts(28, -12, 2.1, 20), circlePts(28, 12, 2.1, 20));
-  const eng = [
-    {kind: 'rect', x: gr, y: -gy, w: GEAR_PLATE.len, h: GEAR_PLATE.wid},
-    {kind: 'text', text: '齒輪底板範圍（不改原檔）', x: (gf + gr) / 2, y: gy - 8},
-    {kind: 'text', text: '建議在齒輪底板偏航軸另開 Ø20', x: yawX, y: -W / 2 + 8},
-  ];
-  return {outline, holes, eng};
+function deckGeom() {
+  // 本地 x=0 迎風前緣，x=190 順風端，y=0 在中線。偏航軸在 x=102.5。
+  return rect(0, -GEAR_PLATE.wid / 2, GEAR_PLATE.len, GEAR_PLATE.wid / 2);
 }
 
 function boomGeom() {
@@ -280,7 +259,7 @@ export function layoutSheets(spec) {
   const gap = 3.5;
   const sheets = [
     {id: 1, title: '第 1 張　塔身與底板', items: [{part: base, x: -base.x0, y: -base.y0}]},
-    {id: 2, title: '第 2 張　平台、尾桿、補強與備品', items: []},
+    {id: 2, title: '第 2 張　上下層板、尾桿、補強與備品', items: []},
   ];
   // 底板放在左下（圖紙 y 向下，零件本地 +y 向上，所以圖紙 y = oy - (py - y0)）。
   // 這裡 x,y 是「本地原點」在圖紙上的位置？改成記錄平移：圖紙 = (ox + px, oy - py)，並讓 bbox 落在範圍內。
@@ -421,7 +400,7 @@ export function buildPrinted(M, spec) {
   out.hub = finishPrint(M, hub, '加長輪轂');
 
   // 限位環
-  const ringOD = 33.2, ringID = 18, ringH = spec.T * 2;
+  const ringOD = 33.2, ringID = 18, ringH = spec.T;
   let ring = Manifold.cylinder(ringH, ringOD / 2, ringOD / 2, 64, false);
   const ringBore = Manifold.cylinder(ringH + 2, ringID / 2, ringID / 2, 40, false).translate([0, 0, -1]);
   const ring3 = ring.subtract(ringBore); ring.delete(); ringBore.delete(); ring = ring3;
@@ -554,21 +533,18 @@ export function buildLaserSolids(M, spec) {
     placed.delete();
   }
 
-  // 塔頂
+  // 下層板固定在方柱上。本地 x 迎風為 0，世界 x = 102.5 - 本地 x。
+  const deckMat = (z0) => [
+    -1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    GEAR_FRONT_X, 0, z0, 1,
+  ];
   {
-    const lo = byId['top-lo'], hi = byId['top-hi'];
-    solids.push({id: 'top-lo', name: '塔頂板下層', solid: extrude(M, [lo.outline, ...lo.holes], T).translate([0, 0, spec.colTop])});
-    solids.push({id: 'top-hi', name: '塔頂板上層', solid: extrude(M, [hi.outline, ...hi.holes], T).translate([0, 0, spec.colTop + T])});
-  }
-
-  // 平台：本地 x 迎風為大。世界 +X = 本地 x - yawLocal，世界 Y = 本地 y，z = platTop
-  {
-    const src = byId.plat;
-    const yawLocal = 122.5;
-    solids.push({
-      id: 'plat', name: '偏航平台板', yaw: true,
-      solid: extrude(M, [src.outline, ...src.holes], T).translate([-yawLocal, 0, spec.platTop]),
-    });
+    const lo = byId.lower;
+    solids.push({id: 'lower', name: '下層板（固定）', yaw: false, solid: extrude(M, [lo.outline, ...lo.holes], T).transform(deckMat(spec.colTop))});
+    const up = byId.upper;
+    solids.push({id: 'upper', name: '上層板（轉動）', yaw: true, solid: extrude(M, [up.outline, ...up.holes], T).transform(deckMat(spec.zUpperBot))});
   }
   // 尾桿：本地 x 從偏航軸往順風。世界 x = -本地 x
   {
@@ -579,7 +555,7 @@ export function buildLaserSolids(M, spec) {
         -1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
-        0, 0, spec.platTop + T, 1,
+        0, 0, spec.zUpperTop, 1,
       ]),
     });
   }
@@ -607,14 +583,14 @@ export function placePrinted(M, spec, printed) {
     1, 0, 0, 0,
     0, -1, 0, 0,
     0, 0, -1, 0,
-    14, 0, spec.platTop, 1,
+    14, 0, spec.zUpperBot, 1,
   ]);
   // 尾桿座在平台順風側
   const mount = printed.mount.solid.transform([
     0, 1, 0, 0,
     1, 0, 0, 0,
     0, 0, 1, 0,
-    -70, 0, spec.platTop + spec.T, 1,
+    -70, 0, spec.zUpperTop, 1,
   ]);
   return [
     {id: 'hub', name: '加長輪轂', solid: hub, yaw: true, print: printed.hub},
