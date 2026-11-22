@@ -18,10 +18,10 @@ export const STEPS = [
   '柱腳榫插入底板，套上柱腳套框，四片三角補強片榫入底板，全部塗膠。出線口不要被補強片擋住。',
   '塔頂下層套上柱頂榫，十字方向放入四顆 M4 螺帽，再蓋上上層板對齊膠合。',
   '3 寸轉盤相對方柱轉 45°，讓四個安裝孔落在十字方向，鎖上塔頂。',
-  '下層全長板套上柱頂榫，十字方向放入四顆 M4 螺帽。轉盤轉 45° 鎖在下層板上。',
-  '上層全長板鎖上轉盤上板。兩層的穿線開口中心都在偏航軸。限位環裝進下層中孔，擋銷鎖在上層板底，先用手轉一圈確認約 ±170°。',
-  '尾桿座鎖在上層板順風端，尾桿推入，尾翼（3 mm 塑膠瓦楞板）鎖在尾桿末端。',
-  '執行長的齒輪組用 M4×12 鎖在上層板，孔位對齊齒輪底板的兩排孔。齒輪組原檔不改。若齒輪底板實厚超過約 7 mm，M4×12 會吃不深，請改用較長的螺絲。',
+  '方管頂端套進下木板 L2（7 mm），四片壁板頂端當十字榫。下框螺帽放進 L2 六角孔，平邊朝向方柱。',
+  'L1 用 M4 盤頭由上往下鎖轉盤下框（對角四孔）。十字方向的 Ø12 是讓套筒從下面伸進去。',
+  '上木板用 M4 沉頭鎖轉盤上框（十字四孔）。對角 Ø10 是讓位。限位擋塊黏在 L1 頂面，擋銷鎖在上木板、距中心 58 mm。',
+  '齒輪組用上木板的 M4×25 沉頭螺柱配蝶形螺帽鎖上，對應下板距前緣 55 與 135 的兩排孔。換 25 倍、30 倍不用工具。尾桿插在加長下板的導槽，不鎖在轉盤木板上。',
   '加長輪轂套上主軸（孔徑請依實測），三片葉片鎖在輪轂圓盤上。導線從柱底出線口拉出，標明正負極。',
 ];
 
@@ -108,16 +108,16 @@ export function sideView(spec, yaw = 0) {
   d.poly([[spec.OUT / 2, spec.T], [go, spec.T], [spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
   d.poly([[-spec.OUT / 2, spec.T], [-go, spec.T], [-spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
   // 塔頂
-  const deck = (z0, z1) => {
-    const x1 = GEAR_FRONT_X * yawC, x0 = (GEAR_FRONT_X - GEAR_PLATE.len) * yawC;
-    d.poly([[Math.min(x0, x1), z0], [Math.max(x0, x1), z0], [Math.max(x0, x1), z1], [Math.min(x0, x1), z1]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
-  };
-  deck(spec.colTop, spec.zT);
-  d.poly([[-TURN.size / 2, spec.zT], [TURN.size / 2, spec.zT], [TURN.size / 2, spec.zT + TURN.thick], [-TURN.size / 2, spec.zT + TURN.thick]], 'fill="#c5ccd3" stroke="#5c6b78" stroke-width="1.2"');
-  deck(spec.zUpperBot, spec.zUpperTop);
-  const gf = GEAR_FRONT_X * yawC, gr = (GEAR_FRONT_X - GEAR_PLATE.len) * yawC;
-  d.poly([[Math.min(gf, gr), spec.zUpperTop], [Math.max(gf, gr), spec.zUpperTop], [Math.max(gf, gr), spec.zGearTop], [Math.min(gf, gr), spec.zGearTop]], 'fill="#8aa0b2" stroke="#3e5160" stroke-width="1.2"');
-  const zPlat = spec.zUpperTop;
+  const slab = (x0, x1, z0, z1, fill) => d.poly([[x0 * yawC, z0], [x1 * yawC, z0], [x1 * yawC, z1], [x0 * yawC, z1]], `fill="${fill}" stroke="#6a4b2b" stroke-width="1.2"`);
+  if (spec.stack) {
+    slab(-65, 65, spec.stack.zL2Bot, spec.stack.zL2Top, '#b9926a');
+    slab(-65, 65, spec.stack.zL1Bot, spec.stack.zL1Top, '#c4a574');
+    d.poly([[-36, spec.stack.zTurnBot], [36, spec.stack.zTurnBot], [36, spec.stack.zTurnTop], [-36, spec.stack.zTurnTop]], 'fill="#c5ccd3" stroke="#5c6b78" stroke-width="1.2"');
+    slab(-65, 65, spec.stack.zUpperBot, spec.stack.zUpperTop, '#d7b98a');
+    slab(GEAR_FRONT_X - GEAR_PLATE.len - 80, GEAR_FRONT_X, spec.stack.zGearBot, spec.stack.zGearTop, '#8aa0b2');
+  }
+  const gf = GEAR_FRONT_X * yawC;
+  const zPlat = spec.stack ? spec.stack.zGearTop : spec.zUpperTop;
   d.line([rx, p.hubZ], [gf, p.hubZ], 'stroke="#3e5160" stroke-width="3"');
   d.circ(rx, p.hubZ, 8, 'fill="#2f6f9f"');
   // 葉片圓
@@ -158,7 +158,7 @@ export function frontView(spec) {
   d.poly([[-CYL_R, 0], [CYL_R, 0], [CYL_R, CYL_H], [-CYL_R, CYL_H]], `fill="${cyl}" fill-opacity="0.06" stroke="${cyl}" stroke-width="2" stroke-dasharray="10 6"`);
   d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, spec.T], [-p.base / 2, spec.T]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
   d.poly([[-spec.OUT / 2, spec.T], [spec.OUT / 2, spec.T], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
-  d.poly([[-GEAR_PLATE.wid / 2, spec.colTop], [GEAR_PLATE.wid / 2, spec.colTop], [GEAR_PLATE.wid / 2, spec.zGearTop], [-GEAR_PLATE.wid / 2, spec.zGearTop]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
+  d.poly([[-65, spec.stack.zL2Bot], [65, spec.stack.zL2Bot], [65, spec.stack.zGearTop], [-65, spec.stack.zGearTop]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.9"');
   // 左右補強
   d.poly([[-spec.OUT / 2, spec.T], [-spec.OUT / 2 - GUSSET_LEG, spec.T], [-spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
   d.poly([[spec.OUT / 2, spec.T], [spec.OUT / 2 + GUSSET_LEG, spec.T], [spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
@@ -207,9 +207,9 @@ export function topView(spec, yaw = 0) {
   const t = TURN.size / 2;
   d.poly([[0, t], [t, 0], [0, -t], [-t, 0]], 'fill="none" stroke="#5c6b78" stroke-width="1.5"');
 
-  const deck = [[GEAR_FRONT_X, GEAR_PLATE.wid / 2], [GEAR_FRONT_X, -GEAR_PLATE.wid / 2], [GEAR_FRONT_X - GEAR_PLATE.len, -GEAR_PLATE.wid / 2], [GEAR_FRONT_X - GEAR_PLATE.len, GEAR_PLATE.wid / 2]].map(([x, y]) => rot(x, y));
+  const deck = [[65, 65], [65, -65], [-65, -65], [-65, 65]].map(([x, y]) => rot(x, y));
   d.poly(deck, 'fill="#d7b98a" fill-opacity="0.9" stroke="#6a4b2b" stroke-width="1.2"');
-  const gear = [[GEAR_FRONT_X, 50], [GEAR_FRONT_X, -50], [GEAR_FRONT_X - GEAR_PLATE.len, -50], [GEAR_FRONT_X - GEAR_PLATE.len, 50]].map(([x, y]) => rot(x, y));
+  const gear = [[GEAR_FRONT_X, 50], [GEAR_FRONT_X, -50], [GEAR_FRONT_X - 210, -50], [GEAR_FRONT_X - 210, -25], [GEAR_FRONT_X - 270, -25], [GEAR_FRONT_X - 270, 25], [GEAR_FRONT_X - 210, 25], [GEAR_FRONT_X - 210, 50]].map(([x, y]) => rot(x, y));
   d.poly(gear, 'fill="#8aa0b2" fill-opacity="0.85" stroke="#3e5160" stroke-width="1.2"');
   // 建議穿線
   const yawP = rot(0, 0);

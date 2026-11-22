@@ -1,4 +1,4 @@
-// 風力發電底座支架設計器 v1.0 — 幾何與力學（瀏覽器與 Node 共用）
+// 風力發電底座支架設計器 v1.1 — 幾何與力學（瀏覽器與 Node 共用）
 // 計算方法沿用方案 D 的 calcD.py：夾板體積 × 密度、推力 Ct=0.8、傾倒力矩、懸臂撓度。
 // 座標：+X 迎風（風輪）、−X 順風（尾翼）、Z 向上、Y 向右。單位 mm、g、N。
 
@@ -35,7 +35,17 @@ export const DIA_HOLE = 20;
 export const WIRE = {w: 15, h: 20};
 export const TOP_HOLE = 34;
 export const PLAT = {len: 250, wid: 110, hole: 25};
-export const BOOM = {len: 365, wid: 30};
+export const BOOM = {len: 350, wid: 30, thick: 5};
+export const DECK = 130;                 // 轉盤上下木板邊長
+export const DECK_T = 7;
+export const SHAFT_ABOVE_BASE = 500;     // 25 倍：主軸離底板頂面
+export const PIN_R = 58;                 // 擋銷距中心
+export const LIMIT_DEG = 169;
+export const GEAR_EXT = 80;              // 下板往後加長
+export const GEAR_HOLE_XS = [15, 55, 95, 135, 175]; // 待確認
+export const STUD_XS = [55, 135];        // 上層板螺柱對這兩站
+export const HEX_CORNER = 7;             // 主軸六角對角
+export const NUT_AF = 7;                 // M4 螺帽對邊，待確認實測
 export const BEND_ROOT = 10;
 export const BEND_TIP = 40;
 export const TE_AT_380 = 48.2;           // 葉長 380 時後緣最大後伸
@@ -58,14 +68,23 @@ export const DEFAULTS = {
   tube: 50,
   diaphragms: 2,
   base: 600,
-  blade: 430,
+  blade: 415,
   gear: '25',
   tailLen: 220,
   tailH: 125,
   tailArm: 360,
   density: 0.65,
-  hubZ: 520,
-  shaftD: 6,
+  hubZ: 505,
+  shaftD: 7,
+  yawType: 'turntable',
+  deckT: 7,
+  shaftAbove: 500,
+  gearWid: 100,
+  gearPlateT: 5,
+  gearEdge: 10,
+  gearHoleD: 5,
+  gearInnerL: 180,
+  gearInnerW: 60,
 };
 
 export const LIMITS = {
@@ -80,13 +99,24 @@ export const LIMITS = {
   tailArm: [180, 460],
   density: [0.40, 0.95],
   hubZ: [300, 700],
-  shaftD: [3, 12],
+  shaftD: [5, 12],
+  deckT: [4, 10],
+  shaftAbove: [400, 600],
+  gearWid: [80, 140],
+  gearPlateT: [3, 8],
+  gearEdge: [6, 20],
+  gearHoleD: [3, 8],
+  gearInnerL: [100, 190],
+  gearInnerW: [30, 80],
 };
 
 export const LABELS = {
   thickness: '板厚', slotFit: '榫孔寬', tube: '方管邊長', diaphragms: '隔板片數',
   base: '底板邊長', blade: '葉片長度', gear: '齒輪組', tailLen: '尾翼長度', tailH: '尾翼高度',
-  tailArm: '尾翼中心距偏航軸', density: '夾板密度', hubZ: '輪轂中心高', shaftD: '主軸直徑',
+  tailArm: '尾翼中心距偏航軸', density: '夾板密度', hubZ: '輪轂中心高', shaftD: '主軸六角對角',
+  deckT: '轉盤木板厚', shaftAbove: '主軸離底板頂面', gearWid: '齒輪底板寬',
+  gearPlateT: '齒輪底板單層厚', gearEdge: '齒輪孔距長邊', gearHoleD: '齒輪孔徑',
+  gearInnerL: '下板內框長', gearInnerW: '下板內框寬',
 };
 
 export function round1(v) { return Math.round(v * 10) / 10; }
@@ -95,29 +125,61 @@ export function round3(v) { return Math.round(v * 1000) / 1000; }
 
 export function shaftH(gear) { return gear === '30' ? SHAFT_30 : SHAFT_25; }
 
-/** 不超出 Ø1000 圓柱、並保住葉尖間隙的最大葉長與所需輪轂高。25／30 倍葉長相同，塔高不同。 */
-export function autoFit(thickness) {
+/** 轉盤版疊層。主軸離底板頂面 shaftAbove（30 倍再加 5）。往下扣齒輪板、上木板、轉盤、L1、L2。 */
+export function stackOf(p) {
+  const T = p.thickness;
+  const deckT = p.deckT;
+  const gearT = p.gearPlateT * 2;
+  const sH = shaftH(p.gear);
+  const above = p.shaftAbove + (p.gear === '30' ? SHAFT_30 - SHAFT_25 : 0);
+  const zBaseTop = T;
+  const zShaft = round1(zBaseTop + above);
+  const zGearTop = round1(zShaft - sH);
+  const zGearBot = round1(zGearTop - gearT);
+  const zUpperBot = round1(zGearBot - deckT);
+  const zTurnBot = round1(zUpperBot - TURN.thick);
+  const zL1Bot = round1(zTurnBot - deckT);
+  const zL2Bot = round1(zL1Bot - deckT);
+  return {
+    zBaseTop, zShaft, zGearTop, zGearBot, zUpperTop: zGearBot, zUpperBot,
+    zTurnTop: zUpperBot, zTurnBot, zL1Top: zTurnBot, zL1Bot, zL2Top: zL1Bot, zL2Bot,
+    towerAbove: round1(zL1Bot - zBaseTop),
+    approx397: round1(above - sH - deckT - TURN.thick - deckT),
+  };
+}
+
+/** 葉尖到底板留隙，同時不超出圓柱。主軸 500 時葉長上限約 415。 */
+export function autoFit(input = {}) {
+  const src = typeof input === 'number' ? {thickness: input} : input;
+  const {params: p} = sanitize(src);
+  const st = stackOf(p);
   const notes = [];
+  const tipMin = p.thickness + BEND_TIP + 10;
+  let byTip = Math.floor((st.zShaft - tipMin - HUB_R) / 5) * 5;
   const maxRb = Math.sqrt(CYL_R * CYL_R - OVERHANG * OVERHANG);
-  const rawL = maxRb - HUB_R;
-  let blade = Math.floor(rawL / 5) * 5;
+  let byCyl = Math.floor((maxRb - HUB_R) / 5) * 5;
   const tipR = L => Math.hypot(L + HUB_R, OVERHANG);
-  while (blade > LIMITS.blade[0] && tipR(blade) > CYL_R - 0.05) blade -= 5;
-  notes.push(`圓柱半徑 ${CYL_R} mm：√((葉長+${HUB_R})²+${OVERHANG}²) ≤ ${CYL_R}。未取整上限 ${rawL.toFixed(1)} mm，向下取 5 mm 為 ${blade} mm，葉尖半徑 ${tipR(blade).toFixed(1)} mm，餘裕 ${(CYL_R - tipR(blade)).toFixed(1)} mm。`);
-  const T = thickness;
-  const tipMin = T + BEND_TIP + 10;
-  let Rb = blade + HUB_R;
-  let hub = Math.ceil((tipMin + Rb) * 10) / 10;
-  while (hub + Rb > CYL_H + 1e-6 && blade > LIMITS.blade[0]) {
-    blade -= 5;
-    Rb = blade + HUB_R;
-    hub = Math.ceil((tipMin + Rb) * 10) / 10;
-    notes.push(`葉長再減 5 mm，否則最高點超過 ${CYL_H} mm。`);
-  }
-  const low = hub - Rb;
-  const high = hub + Rb;
-  notes.push(`葉尖最低要 ≥ ${tipMin.toFixed(0)} mm（板厚 ${T} + 彎曲預留 ${BEND_TIP} + 餘裕 10）。輪轂中心 ${hub} mm：葉尖最低 ${low.toFixed(1)} mm、最高 ${high.toFixed(1)} mm（上限 ${CYL_H}，餘裕 ${(CYL_H - high).toFixed(1)} mm）。若維持原方案輪轂高 ${REF_HUB} mm，葉尖會低到 ${(REF_HUB - Rb).toFixed(0)} mm，扣預留後會碰到底板，所以把塔加高。`);
-  return {blade, hubZ: hub, tipMin, low, high, marginR: CYL_R - tipR(blade), notes};
+  while (byCyl > LIMITS.blade[0] && tipR(byCyl) > CYL_R - 0.05) byCyl -= 5;
+  let byTop = Math.floor((CYL_H - st.zShaft - HUB_R) / 5) * 5;
+  let blade = Math.max(LIMITS.blade[0], Math.min(byTip, byCyl, byTop, LIMITS.blade[1]));
+  const why = blade === byTip ? '葉尖到底板要留彎曲預留' : blade === byCyl ? '圓柱半徑 500' : '最高點 1000';
+  notes.push(`主軸高 ${st.zShaft} mm（底板頂面之上 ${st.zShaft - st.zBaseTop}）。葉尖最低要 ≥ ${tipMin} mm，所以葉長上限 ${byTip} mm。圓柱限制 ${byCyl} mm，高度限制 ${byTop} mm。採用 ${blade} mm，受「${why}」卡住。`);
+  const Rb = blade + HUB_R;
+  return {blade, hubZ: st.zShaft, tipMin, low: st.zShaft - Rb, high: st.zShaft + Rb, marginR: CYL_R - tipR(blade), notes, why, zShaft: st.zShaft};
+}
+
+/** 六角螺帽到方管的木料。平邊朝向方柱，管頂四角倒角後比較厚。 */
+export function nutGap(chamfer = 2) {
+  const hole = TURN.boltR / Math.SQRT2;
+  const dist = (hole * 2 - (50 - chamfer)) / Math.SQRT2;
+  const flat = NUT_AF / 2;
+  const point = NUT_AF / Math.sqrt(3);
+  return {
+    toChamfer: dist,
+    gapFlat: dist - flat,
+    gapPoint: dist - point,
+    rawGapPoint: ((hole * 2 - 50) / Math.SQRT2) - point,
+  };
 }
 
 export function sanitize(input = {}) {
@@ -136,6 +198,7 @@ export function sanitize(input = {}) {
   }
   p.diaphragms = Math.round(p.diaphragms);
   p.gear = p.gear === '30' ? '30' : '25';
+  p.yawType = p.yawType === 'bearing' ? 'bearing' : 'turntable';
   p.thickness = round1(p.thickness);
   p.slotFit = round1(p.slotFit);
   p.tube = round1(p.tube);
@@ -177,19 +240,19 @@ export function compute(input = {}, opt = {}) {
   const INN = OUT - 2 * T;
   const sH = shaftH(p.gear);
   const legacy = !!opt.legacy;
-  // v1.1：主軸在齒輪底板頂面之上 sH。往下是齒輪底板 10、上層板、轉盤、下層板，再接到方柱。
-  // legacy 維持 v1.0／calcD 的塔頂兩層小板＋平台，用來對照 json。
-  const zGearTop = round1(p.hubZ - sH);
-  const zUpperTop = round1(zGearTop - (legacy ? 0 : GEAR_PLATE.thick));
-  const zUpperBot = round1(zUpperTop - (legacy ? 0 : T));
-  const zT = legacy
-    ? round1(p.hubZ - sH - T - TURN.thick)
-    : round1(zUpperBot - TURN.thick);          // 下層板頂面
-  const colTop = legacy ? round1(zT - 2 * T) : round1(zT - T);
-  const Lcol = colTop;
-  const wallLen = round1(colTop + T);
+  // legacy 維持 calcD 的塔頂，用來對照 json。v1.1 轉盤版由主軸離底板頂面往下扣。
+  const st = legacy ? null : stackOf(p);
+  if (!legacy) p.hubZ = st.zShaft;
+  const zGearTop = legacy ? round1(p.hubZ - sH) : st.zGearTop;
+  const zUpperTop = legacy ? zGearTop : st.zUpperTop;
+  const zUpperBot = legacy ? zGearTop : st.zUpperBot;
+  const zT = legacy ? round1(p.hubZ - sH - T - TURN.thick) : st.zL1Top;
+  const colTop = legacy ? round1(zT - 2 * T) : st.zL2Top;
+  const topTenon = legacy ? T : p.deckT;
+  const Lcol = legacy ? colTop : st.zL2Bot;
+  const wallLen = legacy ? round1(colTop + T) : colTop;
   const body0 = T;
-  const body1 = colTop;
+  const body1 = legacy ? colTop : round1(colTop - topTenon);
   const bodyLen = round1(body1 - body0);
   let nSeg = Math.max(4, Math.round(bodyLen / 25.4));
   if (nSeg % 2 === 1) nSeg += 1;               // 偶數段，左右錯開後兩端都收得乾淨
@@ -201,7 +264,7 @@ export function compute(input = {}, opt = {}) {
   const wireBot = round1(T + 2);
   const wireTop = round1(wireBot + WIRE.h);
   const zLo = round1(Math.max(wireTop + T / 2 + 3, T + 18));
-  const zHi = round1(colTop - 16);
+  const zHi = round1(body1 - 16);
   const diaZ = [];
   const nDia = p.diaphragms;
   if (nDia === 1) diaZ.push(round1((zLo + zHi) / 2));
@@ -218,8 +281,8 @@ export function compute(input = {}, opt = {}) {
   // ── 質量（calcD 同式；塔頂板用實際邊長）──
   const rho = p.density;
   const cm3 = (mm3) => mm3 / 1000;
-  const openArea = GEAR_OPENING.w * GEAR_OPENING.h;
-  const deckNet = GEAR_PLATE.len * GEAR_PLATE.wid - openArea;
+  const openArea = 20 * 8 + Math.PI * 10 * 10;
+  const deckNet = DECK * DECK - openArea;
   const wood = {
     '柱壁板': cm3((OUT * OUT - INN * INN) * Lcol) * rho,
     '內隔板': nDia * cm3((INN * INN - Math.PI * holeR * holeR) * T) * rho,
@@ -229,12 +292,16 @@ export function compute(input = {}, opt = {}) {
     '木工膠': GLUE_G,
   };
   if (legacy) wood['塔頂板'] = 2 * cm3((topSize * topSize - Math.PI * (TOP_HOLE / 2) ** 2) * T) * rho;
-  else wood['下層板'] = cm3(deckNet * T) * rho;
+  else {
+    wood['下木板 L1'] = cm3(deckNet * p.deckT) * rho;
+    wood['下木板 L2'] = cm3((DECK * DECK - OUT * OUT) * p.deckT) * rho;
+  }
   const towerMass = Object.values(wood).reduce((a, b) => a + b, 0);
-  // v1.0 的 661 g 含 250×110×5 平台。v1.1 換成 190×100 上層板，齒輪底板仍算在 661 裡。
+  // v1.0 的 661 g 含 250×110×5 平台。v1.1 換成 130×130×7 上木板。加長下板另計木料差。
   const oldPlatCm3 = legacy ? 0 : 250 * 110 * 5 / 1000;
-  const newUpperCm3 = legacy ? 0 : deckNet * T / 1000;
-  const upper = (p.gear === '30' ? UPPER_30 : UPPER_25) + (newUpperCm3 - oldPlatCm3) * rho;
+  const newUpperCm3 = legacy ? 0 : deckNet * p.deckT / 1000;
+  const extCm3 = legacy ? 0 : ((GEAR_PLATE.len + GEAR_EXT) * p.gearWid - GEAR_PLATE.len * p.gearWid) * p.gearPlateT / 1000;
+  const upper = (p.gear === '30' ? UPPER_30 : UPPER_25) + (newUpperCm3 - oldPlatCm3) * rho + extCm3 * rho;
   const totalMass = towerMass + upper;
 
   const Rmm = p.blade + HUB_R;
@@ -249,9 +316,9 @@ export function compute(input = {}, opt = {}) {
 
   const I = (OUT ** 4 - INN ** 4) / 12;
   const EI = E_MPA * I;                         // N·mm²
-  const Lcant = legacy ? zT - T : zT - T; // 地面底板頂到固定板頂
+  const Lcant = legacy ? zT - T : st.zL2Top - T;
   const F4 = thrust(4);
-  const arm = p.hubZ - (legacy ? zT : zT);
+  const arm = p.hubZ - (legacy ? zT : st.zL2Top);
   const M4 = F4 * arm;
   const deflTop = F4 * Lcant ** 3 / (3 * EI) + M4 * Lcant ** 2 / (2 * EI);
   const theta = F4 * Lcant ** 2 / (2 * EI) + M4 * Lcant / EI;
@@ -284,7 +351,7 @@ export function compute(input = {}, opt = {}) {
   function reach(z) {
     if (z < 0 || z > (legacy ? zT : zGearTop)) return 0;
     if (z <= T) return squareReach(p.base / 2, Math.PI / 4); // 底板對角，取最大
-    if (!legacy && z >= colTop) return Math.hypot(GEAR_FRONT_X, GEAR_PLATE.wid / 2);
+    if (!legacy && z >= st.zL2Bot) return Math.hypot(GEAR_FRONT_X, p.gearWid / 2);
     if (legacy && z >= zT - 2 * T) return squareReach(topSize / 2, Math.PI / 4);
     const col = squareReach(OUT / 2, Math.PI / 4);
     if (z >= T + GUSSET_H) return col;
@@ -323,12 +390,10 @@ export function compute(input = {}, opt = {}) {
 
   const fit25 = autoFit(T);
   const fit30 = autoFit(T); // 葉長與輪轂高不隨倍率變；塔頂高會變
-  const drop = (shaft) => legacy
-    ? round1(p.hubZ - shaft - T - TURN.thick)
-    : round1(p.hubZ - shaft - GEAR_PLATE.thick - T - TURN.thick);
-  const tower30 = drop(SHAFT_30);
-  const tower25 = drop(SHAFT_25);
-  const turnNote = legacy ? '' : '全長板 190×100 裝得下 R41 孔，板邊不再破。0° 時四孔在對角，螺帽槽離 50 mm 方柱角只剩約 1.6 mm（方案說明約 0.5 mm）。維持轉 45°，讓孔落在十字方向、螺帽在柱壁外。';
+  const tower30 = legacy ? round1(480 - SHAFT_30 - 5 - TURN.thick) : stackOf({...p, gear: '30'}).zL1Top;
+  const tower25 = legacy ? round1(480 - SHAFT_25 - 5 - TURN.thick) : stackOf({...p, gear: '25'}).zL1Top;
+  const gap = nutGap(2);
+  const turnNote = legacy ? '' : `上框孔在十字、下框孔在對角，兩框錯 45°。六角孔若尖角朝方柱，木料只剩約 ${gap.rawGapPoint.toFixed(1)} mm。已把方管頂四角倒 2 mm，六角孔平邊朝向方柱，木料約 ${gap.gapFlat.toFixed(1)} mm。`;
 
   return {
     params: p, warnings, T, OUT, INN, sH, zT, colTop, Lcol, wallLen, body0, body1, bodyLen,
@@ -336,9 +401,14 @@ export function compute(input = {}, opt = {}) {
     gussetOuter, wood, towerMass, upper, totalMass, area, thrust, sfAt, sf, I, EI, Lcant,
     deflTop, deflHub, F4, env, clearance, fit25, fit30, tower25, tower30,
     finger: {nSeg, pitch, depth: T},
-    legacy, zGearTop, zUpperTop, zUpperBot, zLowerTop: zT, zLowerBot: colTop,
-    deck: {len: GEAR_PLATE.len, wid: GEAR_PLATE.wid, thick: GEAR_PLATE.thick, yawFromFront: GEAR_FRONT_X, holes: GEAR_HOLE_X.length * 2, opening: GEAR_OPENING, turnDeg: TURN_DEG},
-    turnNote, overhang: OVERHANG,
+    legacy, zGearTop, zUpperTop, zUpperBot, zLowerTop: zT, zLowerBot: legacy ? colTop : st.zL2Bot,
+    topTenon, stack: st, nutGap: gap,
+    deck: {len: DECK, wid: DECK, thick: legacy ? T : p.deckT, yawFromFront: GEAR_FRONT_X, holes: 4, opening: {w: 8, h: 20}, turnDeg: TURN_DEG},
+    turnNote, overhang: OVERHANG, pending: [
+      '齒輪底板寬 100、單層厚 5、孔距前緣 15/55/95/135/175、距長邊 10、孔徑 5、下板內框 180×60（長 190 是側視量到的）',
+      'KFL08 孔距 37 或 36、兩顆相距 90、軸承盒 70×70（只在軸承轉軸版）',
+      'M4 沉頭錐坑要另外锪，雷切只開直孔與藍圈',
+    ],
   };
 }
 

@@ -5,7 +5,7 @@ import {
   VERSION, DEFAULTS, LIMITS, LABELS, compute, autoFit, referenceCalcD, round1, round2, round3,
   HUB_R, ROTOR_X, YAW_LIMIT, CYL_R, CYL_H, TURN, GEAR_FRONT_X, GEAR_PLATE, GEAR_OD_80, BOOM,
 } from './calc.mjs';
-import {laserSvgs, buildPrinted, buildLaserSolids, placePrinted} from './make.mjs';
+import {laserSvgs, buildPrinted, buildLaserSolids, placePrinted, gearCorrectionSvg} from './make.mjs';
 import {meshArrays, binarySTL, makeZip, edgeCheck} from './mesh.mjs';
 import {frontView, sideView, topView, sfChart, explodeView, STEPS} from './draw.mjs';
 
@@ -65,11 +65,8 @@ app.innerHTML = `
       <h2>零件與下載</h2>
       <div id="bom"></div>
       <div class="btns">
-        <button type="button" data-stl="hub">下載加長輪轂 STL</button>
-        <button type="button" data-stl="ring">下載限位環 STL</button>
-        <button type="button" data-stl="pin">下載限位擋銷 STL</button>
-        <button type="button" data-stl="mount">下載尾桿座 STL</button>
-        <button type="button" class="primary" id="zip">下載全部列印件（ZIP）</button>
+        <button type="button" data-stl="hub">下載加長輪轂 STL（六角孔）</button>
+        <button type="button" id="gear-svg">下載加長齒輪下板 SVG（教具老師修正）</button>
       </div>
     </section>
   </div>
@@ -87,8 +84,16 @@ const FIELDS = [
   ['風輪與齒輪', [
     ['gear', '齒輪組', '', 0],
     ['blade', '葉片長度', 'mm', 1],
-    ['hubZ', '輪轂中心高', 'mm', 1],
-    ['shaftD', '主軸直徑（假設）', 'mm', 0.1],
+    ['shaftAbove', '主軸離底板頂面（25 倍）', 'mm', 1],
+    ['shaftD', '主軸六角對角', 'mm', 0.1],
+    ['yawType', '支架版本', '', 0],
+  ]],
+  ['待確認（齒輪底板，長 190 除外）', [
+    ['gearWid', '底板寬', 'mm', 1],
+    ['gearPlateT', '單層厚', 'mm', 0.5],
+    ['gearEdge', '孔距長邊', 'mm', 1],
+    ['gearHoleD', '孔徑', 'mm', 0.1],
+    ['deckT', '轉盤木板厚', 'mm', 0.5],
   ]],
   ['尾翼', [
     ['tailLen', '尾翼長度', 'mm', 1],
@@ -108,7 +113,9 @@ for (const [title, list] of FIELDS) {
     const row = document.createElement('label');
     row.className = 'row';
     if (key === 'gear') {
-      row.innerHTML = `<span>${label}</span><select data-k="gear"><option value="25">25 倍（主軸高 80）</option><option value="30">30 倍（主軸高 85）</option></select><em></em>`;
+      row.innerHTML = `<span>${label}</span><select data-k="gear"><option value="25">25 倍（主軸離齒輪板 80）</option><option value="30">30 倍（85，主軸再高 5）</option></select><em></em>`;
+    } else if (key === 'yawType') {
+      row.innerHTML = `<span>${label}</span><select data-k="yawType"><option value="turntable">3 寸轉盤版（預設，完整）</option><option value="bearing">軸承轉軸版（概念，待確認）</option></select><em></em>`;
     } else {
       const [lo, hi] = LIMITS[key];
       row.innerHTML = `<span>${label}</span><input type="number" data-k="${key}" min="${lo}" max="${hi}" step="${step}" value="${state[key]}"><em>${unit}</em>`;
@@ -135,12 +142,12 @@ function syncForm() {
 form.addEventListener('input', e => {
   const k = e.target.dataset.k;
   if (!k) return;
-  if (k === 'gear') state.gear = e.target.value;
+  if (k === 'gear' || k === 'yawType') state[k] = e.target.value;
   else {
     if (e.target.value === '' || !Number.isFinite(+e.target.value)) return;
     state[k] = +e.target.value;
   }
-  if (k === 'blade' || k === 'hubZ') autoOn = false;
+  if (k === 'blade') autoOn = false;
   if (k === 'gear' && autoOn) applyAuto();
   schedule();
 });
@@ -236,10 +243,10 @@ function paint2d() {
     <div class="sf" style="margin-top:8px">${rows}</div>
     ${warns.map(w => `<div class="warn">${w}</div>`).join('') || '<div class="oknote">以轉盤頂面為準，葉尖、尾翼、底座角與最高點都在 Ø100 cm × 高 100 cm 圓柱內。</div>'}
     ${ground}
-    <p class="note">v1.1 塔頂是兩片 ${spec.deck.len}×${spec.deck.wid} 全長板，中間夾 3 寸轉盤（轉 ${spec.deck.turnDeg}°）。偏航軸在板前緣後方 ${spec.deck.yawFromFront} mm，懸伸 ${spec.overhang} mm。上層板有 ${spec.deck.holes} 個 M4 孔，對齊齒輪底板；兩層穿線開口 ${spec.deck.opening.w}×${spec.deck.opening.h}，中心都在偏航軸。</p>
-    <p class="note">${spec.turnNote}</p>
-    <p class="note">25 倍與 30 倍建議葉長都是 ${fit.blade} mm、輪轂高 ${fit.hubZ} mm。30 倍主軸高 5 mm，塔頂面會再低 5 mm。目前是 ${state.gear} 倍，下層板頂 ${spec.zT} mm，柱身（含下榫）${spec.wallLen} mm，隔板在 ${spec.diaZ.map(z => z.toFixed(1)).join('、')} mm。</p>
-    <p class="note">塔重 <b data-k="tower">${Math.round(spec.towerMass)}</b> g，整機 <b data-k="total">${Math.round(spec.totalMass)}</b> g（密度 ${state.density} g/cm³，上半部沿用 ${spec.upper} g）。4 m/s 塔頂撓度 <b data-k="defl">${spec.deflTop.toFixed(3)}</b> mm。葉尖離底板 ${cl.abovePlate.toFixed(0)} mm，扣彎曲預留後 ${cl.abovePlateAfter.toFixed(0)} mm。葉根後緣距齒輪前緣 ${cl.rootGap.toFixed(1)} mm。</p>
+    <p class="note">主軸中心 <b data-k="shaft">${spec.params.hubZ.toFixed(1)}</b> mm，離底板頂面 ${(spec.params.hubZ - spec.T).toFixed(0)} mm。葉尖到底板頂面 <b data-k="tipBase">${spec.clearance.abovePlate.toFixed(1)}</b> mm（扣 40 mm 彎曲預留後 ${spec.clearance.abovePlateAfter.toFixed(1)} mm）。塔身（底板頂面到 L2 頂）<b>${spec.stack.towerAbove.toFixed(1)}</b> mm。若不算齒輪底板厚，約 ${spec.stack.approx397.toFixed(1)} mm。</p>
+    <p class="note">${spec.turnNote} 上木板 130×130×${state.deckT}，M4 沉頭鎖上框（十字），對角 Ø10 讓位，另有 4 支 M4×25 螺柱對齒輪孔 55／135。L1 鎖下框（對角），十字 Ø12 讓套筒。L2 套方管 7 mm。限位擋塊黏在 L1，擋銷距中心 58 mm。</p>
+    <p class="note">${state.yawType === 'bearing' ? '目前是軸承轉軸版，只是概念：兩顆 KFL08 相距約 90，夾 Ø8 鋼軸，裝在 70×70 盒裡。孔距 37 或 36 都待確認，沒有正式雷切檔。' : '目前是 3 寸轉盤版。'} 待確認：${spec.pending.join('；')}。</p>
+    <p class="note">塔重 <b data-k="tower">${Math.round(spec.towerMass)}</b> g，整機 <b data-k="total">${Math.round(spec.totalMass)}</b> g（密度 ${state.density} g/cm³，上半部沿用 ${Math.round(spec.upper)} g）。4 m/s 塔頂撓度 <b data-k="defl">${spec.deflTop.toFixed(3)}</b> mm。葉尖離底板 ${cl.abovePlate.toFixed(0)} mm，扣彎曲預留後 ${cl.abovePlateAfter.toFixed(0)} mm。葉根後緣距齒輪前緣 ${cl.rootGap.toFixed(1)} mm。</p>
     <table class="compare"><thead><tr><th></th><th>目前</th><th>calcD.json 原假設（隔板 4、葉長 380、輪轂 480、塔頂 80）</th></tr></thead><tbody>
       <tr><td>塔重 g</td><td>${Math.round(spec.towerMass)}</td><td>${Math.round(ref.towerMass)}</td></tr>
       <tr><td>整機 g</td><td>${Math.round(spec.totalMass)}</td><td>${Math.round(ref.totalMass)}</td></tr>
@@ -269,7 +276,7 @@ function paint2d() {
     <tr><td>上半部（齒輪、葉片、尾、轉盤下板）</td><td>${spec.upper}</td><td>沿用方案 D，不隨葉長增減</td></tr>
     <tr><td>合計</td><td>${Math.round(spec.totalMass)}</td><td>4 m/s 安全係數 ${sf4.toFixed(2)}</td></tr>
     </tbody></table>
-    <p class="note">雷切：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、上下層板各 1（${spec.deck.len}×${spec.deck.wid}）、底板 ${state.base}、尾桿 365×30、限位擋塊（可選）。上層用 M4×12 鎖執行長的齒輪組。列印：加長輪轂（半徑 ${HUB_R}、加長 75）、限位環、擋銷、尾桿座。外購：3 寸全珠轉盤、M4、木工膠。尾翼用 3 mm 塑膠瓦楞板。</p>`;
+    <p class="note">雷切 5 mm：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、底板 ${state.base}、尾桿 30×5×350、限位擋塊。雷切 7 mm：上木板、L1、L2，各 130×130。另檔：齒輪下板加長到 270（教具老師修正，孔位待確認）。執行長的齒輪組原檔不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
 }
 
 function clearGroup(g) {
@@ -288,7 +295,7 @@ function rebuild() {
   disposeSolids(lasers);
   disposeSolids(copies);
   copies = [];
-  if (printed) for (const k of ['hub', 'ring', 'pin', 'mount']) printed[k].solid.delete();
+  if (printed) for (const part of Object.values(printed)) if (part && part.solid && part.solid.delete) part.solid.delete();
   clearGroup(fixedG); clearGroup(yawG);
   printed = buildPrinted(M, spec);
   lasers = buildLaserSolids(M, spec);
@@ -434,10 +441,9 @@ document.querySelectorAll('[data-stl]').forEach(b => b.onclick = () => {
   const k = b.dataset.stl;
   save(binarySTL(printed[k].solid, 'wind-stand'), `${printed[k].name}.stl`, 'model/stl');
 });
-$('#zip').onclick = () => {
-  if (!printed) return;
-  const files = ['hub', 'ring', 'pin', 'mount'].map(k => ({name: printed[k].name + '.stl', data: binarySTL(printed[k].solid)}));
-  save(makeZip(files), `底座支架列印件_v${VERSION}.zip`, 'application/zip');
+$('#gear-svg').onclick = () => {
+  if (!spec) return;
+  save(new TextEncoder().encode(gearCorrectionSvg(spec)), '齒輪組下板_加長尾桿_教具老師修正.svg', 'image/svg+xml');
 };
 
 applyAuto();

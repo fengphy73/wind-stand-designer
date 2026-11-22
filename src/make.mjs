@@ -1,8 +1,8 @@
 // 雷切輪廓、900×600 排版、3D 列印實體。紅線切割、藍線雕刻，單位 mm，不另做縮放。
 import {
   COLLAR, COL_TENON_W, DIA_TENON_W, DIA_HOLE, GUSSET_H, GUSSET_LEG, GUSSET_TENON,
-  HUB_LEN, HUB_R, ROTOR_X, SHEET, TURN, WIRE, BOOM, GEAR_FRONT_X, GEAR_PLATE,
-  GEAR_HOLE_X, GEAR_HOLE_Y, GEAR_OPENING,
+  HUB_LEN, HUB_R, ROTOR_X, SHEET, TURN, WIRE, BOOM, GEAR_FRONT_X, GEAR_PLATE, GEAR_EXT,
+  GEAR_HOLE_XS, STUD_XS, DECK, PIN_R, HEX_CORNER,
 } from './calc.mjs';
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -29,6 +29,7 @@ export function ccw(pts) {
 /** 壁板外形。右緣從缺口起、左緣從指起，四片同形轉 90° 可咬合。 */
 export function wallOutline(spec) {
   const T = spec.T, W = spec.OUT, tw = COL_TENON_W;
+  const ten = spec.topTenon || T;
   const u0 = spec.body0, u1 = spec.body1, n = spec.nSeg;
   const outer = W / 2, inner = W / 2 - T;
   const pts = [[-tw / 2, 0], [tw / 2, 0], [tw / 2, u0]];
@@ -38,7 +39,7 @@ export function wallOutline(spec) {
     const a = u0 + i * spec.pitch, b = a + spec.pitch;
     pts.push([v, a], [v, b]);
   }
-  pts.push([tw / 2, u1], [tw / 2, u1 + T], [-tw / 2, u1 + T], [-tw / 2, u1]);
+  pts.push([tw / 2, u1], [tw / 2, u1 + ten], [-tw / 2, u1 + ten], [-tw / 2, u1]);
   for (let i = n - 1; i >= 0; i--) {
     const tab = i % 2 === 0;
     const v = tab ? -outer : -inner;
@@ -79,11 +80,12 @@ export function gussetPoly(spec) {
   return ccw([[0, 0], [x0, 0], [x0, -T], [x1, -T], [x1, 0], [L, 0], [0, H]]);
 }
 
-export function hex(cx, cy, af) {
+export function hex(cx, cy, af, rotDeg = 0) {
   const R = (af / 2) / Math.cos(Math.PI / 6);
+  const rot = rotDeg * Math.PI / 180;
   const pts = [];
   for (let i = 0; i < 6; i++) {
-    const a = Math.PI / 6 + i * Math.PI / 3;
+    const a = Math.PI / 6 + i * Math.PI / 3 + rot;
     pts.push([cx + R * Math.cos(a), cy + R * Math.sin(a)]);
   }
   return ccw(pts);
@@ -181,39 +183,14 @@ export function laserParts(spec) {
   const colHole = rect(-(spec.OUT + 0.4) / 2, -(spec.OUT + 0.4) / 2, (spec.OUT + 0.4) / 2, (spec.OUT + 0.4) / 2);
   push(part('collar', '柱腳套框', 1, col, [colHole], [{kind: 'text', text: '套框', x: 0, y: COLLAR / 2 - 8}], '套框'));
 
-  const yawX = GEAR_FRONT_X;
-  const opening = roundPoly(yawX - GEAR_OPENING.w / 2, -GEAR_OPENING.h / 2, GEAR_OPENING.w, GEAR_OPENING.h, 3);
-  const gearHoles = [];
-  for (const x of GEAR_HOLE_X) for (const s of [1, -1]) gearHoles.push(circlePts(x, s * GEAR_HOLE_Y, 2.1, 20));
-  const turnHoles = (angles) => angles.map(a => {
-    const r = a * Math.PI / 180;
-    return circlePts(yawX + Math.cos(r) * TURN.boltR, Math.sin(r) * TURN.boltR, 2.1, 20);
-  });
-  const upper = deckGeom();
-  push(part('upper', '上層板（轉動）', 1, upper, [opening, ...gearHoles, ...turnHoles([45, 135, 225, 315]), circlePts(168, -12, 2.1, 16), circlePts(182, 12, 2.1, 16)], [
-    {kind: 'text', text: '上層·迎風', x: 16, y: 0},
-    {kind: 'text', text: 'M4×12 對齒輪底板', x: 70, y: 46},
-  ], '上層'));
-  const tenonHoles = [];
-  for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {
-    const cx = yawX + dx * cWall, cy = dy * cWall;
-    if (dy !== 0) tenonHoles.push(rect(cx - slotW / 2, cy - slotT / 2, cx + slotW / 2, cy + slotT / 2));
-    else tenonHoles.push(rect(cx - slotT / 2, cy - slotW / 2, cx + slotT / 2, cy + slotW / 2));
-  }
-  const nuts = [0, 90, 180, 270].map(a => {
-    const r = a * Math.PI / 180;
-    return hex(yawX + Math.cos(r) * TURN.boltR, Math.sin(r) * TURN.boltR, 7.2);
-  });
-  const lower = deckGeom();
-  push(part('lower', '下層板（固定）', 1, lower, [opening, ...tenonHoles, ...nuts], [
-    {kind: 'text', text: '下層·接方柱', x: 16, y: 0},
-  ], '下層'));
+  const plates = yawPlates(spec);
+  push(plates.upper);
+  push(plates.l1);
+  push(plates.l2);
+  push(plates.stop);
 
   const boom = boomGeom(spec);
-  push(part('boom', '尾桿', 1, boom.outline, boom.holes, boom.eng, '尾桿'));
-
-  const stop = rect(0, 0, 36, 18);
-  push(part('stop-laser', '限位擋塊（雷切，可選）', 1, stop, [circlePts(10, 9, 1.6, 20)], [{kind: 'text', text: '限位', x: 22, y: 9}], '限位'));
+  push(part('boom', '尾桿 30×5×350', 1, boom.outline, boom.holes, boom.eng, '尾桿'));
 
   return parts;
 }
@@ -232,9 +209,73 @@ function roundPoly(x, y, w, h, rad) {
   return ccw(pts);
 }
 
-function deckGeom() {
-  // 本地 x=0 迎風前緣，x=190 順風端，y=0 在中線。偏航軸在 x=102.5。
-  return rect(0, -GEAR_PLATE.wid / 2, GEAR_PLATE.len, GEAR_PLATE.wid / 2);
+function yawPlates(spec) {
+  const S = DECK / 2;
+  const outline = rect(-S, -S, S, S);
+  const wire = [
+    circlePts(0, 0, 10, 32),
+    rect(-28, -4, -8, 4),
+  ];
+  const at = (deg, r, dia) => {
+    const a = deg * Math.PI / 180;
+    return circlePts(Math.cos(a) * r, Math.sin(a) * r, dia / 2, 20);
+  };
+  const cross = [0, 90, 180, 270].map(a => at(a, TURN.boltR, 4.2));
+  const diag = [45, 135, 225, 315].map(a => at(a, TURN.boltR, 10));
+  const clear12 = [0, 90, 180, 270].map(a => at(a, TURN.boltR, 12));
+  const studs = [];
+  const yRow = spec.params.gearWid / 2 - spec.params.gearEdge;
+  for (const from of STUD_XS) for (const s of [1, -1]) {
+    studs.push(circlePts(GEAR_FRONT_X - from, s * yRow, 4.2, 20));
+  }
+  const sink = [0, 90, 180, 270].map(a => {
+    const r = a * Math.PI / 180;
+    return {kind: 'circle', x: Math.cos(r) * TURN.boltR, y: Math.sin(r) * TURN.boltR, r: 4};
+  });
+  const upper = part('upper', '上木板 130×130×7', 1, outline, [...wire, ...cross, ...diag, ...studs], [
+    {kind: 'text', text: '上木板·7 mm', x: 0, y: S - 8},
+    {kind: 'text', text: '沉頭锪孔（待鉆）', x: 0, y: -S + 8},
+    ...sink,
+  ], '上木板');
+  const l1 = part('l1', '下木板 L1 130×130×7', 1, outline, [...wire, ...diag.map((_, i) => at([45, 135, 225, 315][i], TURN.boltR, 4.2)), ...clear12], [
+    {kind: 'text', text: 'L1·鎖下框', x: 0, y: S - 8},
+  ], 'L1');
+  const socket = tubeSocket(spec.OUT + 0.4, 2.5);
+  const nuts = [45, 135, 225, 315].map(a => {
+    const r = a * Math.PI / 180;
+    return hex(Math.cos(r) * TURN.boltR, Math.sin(r) * TURN.boltR, 7, 45);
+  });
+  const l2 = part('l2', '下木板 L2 130×130×7', 1, outline, [socket, ...nuts, circlePts(0, 0, 10, 24)], [
+    {kind: 'text', text: 'L2·套方管', x: 0, y: S - 8},
+    {kind: 'text', text: '六角孔平邊朝柱', x: 0, y: -S + 8},
+  ], 'L2');
+  const stop = part('stop', '限位擋塊（黏在 L1 頂）', 1, rect(0, 0, 22, 14), [], [
+    {kind: 'text', text: '限位', x: 11, y: 7},
+  ], '限位');
+  return {upper, l1, l2, stop};
+}
+
+function tubeSocket(side, chamfer) {
+  const h = side / 2, c = chamfer;
+  return ccw([[-h + c, -h], [h - c, -h], [h, -h + c], [h, h - c], [h - c, h], [-h + c, h], [-h, h - c], [-h, -h + c]]);
+}
+
+export function gearCorrection(spec) {
+  const p = spec.params;
+  const L = GEAR_PLATE.len + GEAR_EXT;
+  const W = p.gearWid;
+  const yRow = W / 2 - p.gearEdge;
+  const neck = GEAR_PLATE.len + 20;
+  const outline = ccw([
+    [0, -W / 2], [neck, -W / 2], [neck, -25], [L, -25], [L, 25], [neck, 25], [neck, W / 2], [0, W / 2],
+  ]);
+  const holes = [];
+  for (const x of GEAR_HOLE_XS) for (const s of [1, -1]) holes.push(circlePts(x, s * yRow, p.gearHoleD / 2, 16));
+  const inner = rect((GEAR_PLATE.len - p.gearInnerL) / 2, -p.gearInnerW / 2, (GEAR_PLATE.len + p.gearInnerL) / 2, p.gearInnerW / 2);
+  holes.push(inner);
+  holes.push(circlePts(neck + 20, 0, 2.1, 16), circlePts(neck + 50, 0, 2.1, 16));
+  const guides = [rect(0, 0, 60, 8), rect(0, 0, 60, 8)];
+  return {outline, holes, guides, L, W, pending: true};
 }
 
 function boomGeom() {
@@ -309,6 +350,9 @@ function sheetItemSvg(item) {
       const [x, y] = map([e.x, e.y + e.h]); // 本地 y 向上，矩形的上邊是 y+h
       eng += `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${e.w.toFixed(2)}" height="${e.h.toFixed(2)}"/>`;
       if (e.label) eng += `<text x="${(x + e.w / 2).toFixed(2)}" y="${(y + e.h / 2).toFixed(2)}" fill="#0000ff" font-size="3.2" font-family="sans-serif" text-anchor="middle">${escapeXml(e.label)}</text>`;
+    } else if (e.kind === 'circle') {
+      const [x, y] = map([e.x, e.y]);
+      eng += `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${e.r.toFixed(2)}"/>`;
     } else if (e.kind === 'cross') {
       const [x, y] = map([e.x, e.y]);
       eng += `<path d="M${(x - e.s).toFixed(2)} ${y.toFixed(2)} H${(x + e.s).toFixed(2)} M${x.toFixed(2)} ${(y - e.s).toFixed(2)} V${(y + e.s).toFixed(2)}"/>`;
@@ -386,8 +430,15 @@ export function buildPrinted(M, spec) {
   const shank = Manifold.cylinder(HUB_LEN - 8, 16, 16, 48, false).translate([0, 0, 8]);
   let hub = disc.add(shank);
   disc.delete(); shank.delete();
-  const boreR = spec.params.shaftD / 2 + 0.15;
-  const bore = Manifold.cylinder(30, boreR, boreR, 32, false).translate([0, 0, HUB_LEN - 28]);
+  const across = spec.params.shaftD;
+  const hexPts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 6 + i * Math.PI / 3;
+    hexPts.push([Math.cos(a) * across / 2, Math.sin(a) * across / 2]);
+  }
+  const hexCs = new M.CrossSection([ccw(hexPts)]);
+  const bore = hexCs.extrude(32).translate([0, 0, HUB_LEN - 30]);
+  hexCs.delete();
   const hub2 = hub.subtract(bore); hub.delete(); bore.delete(); hub = hub2;
   for (let k = 0; k < 3; k++) {
     const a = (90 + k * 120) * Math.PI / 180;
@@ -455,6 +506,7 @@ function finishPrint(M, solid, name) {
 
 /** 雷切件擠出後放到世界座標，給 3D 預覽。與圖紙同一個輪廓。 */
 export function buildLaserSolids(M, spec) {
+  const {Manifold} = M;
   const T = spec.T;
   const parts = laserParts(spec);
   const byId = Object.fromEntries(parts.map(p => [p.id, p]));
@@ -534,17 +586,19 @@ export function buildLaserSolids(M, spec) {
   }
 
   // 下層板固定在方柱上。本地 x 迎風為 0，世界 x = 102.5 - 本地 x。
-  const deckMat = (z0) => [
-    -1, 0, 0, 0,
-    0, 1, 0, 0,
-    0, 0, 1, 0,
-    GEAR_FRONT_X, 0, z0, 1,
-  ];
-  {
-    const lo = byId.lower;
-    solids.push({id: 'lower', name: '下層板（固定）', yaw: false, solid: extrude(M, [lo.outline, ...lo.holes], T).transform(deckMat(spec.colTop))});
-    const up = byId.upper;
-    solids.push({id: 'upper', name: '上層板（轉動）', yaw: true, solid: extrude(M, [up.outline, ...up.holes], T).transform(deckMat(spec.zUpperBot))});
+  const lay = (src, z0, yaw, name, h) => {
+    if (!src) return;
+    solids.push({id: src.id, name, yaw, solid: extrude(M, [src.outline, ...src.holes], h || T).translate([0, 0, z0])});
+  };
+  if (spec.params.yawType !== 'bearing') {
+    lay(byId.l2, spec.stack.zL2Bot, false, '下木板 L2', spec.params.deckT);
+    lay(byId.l1, spec.stack.zL1Bot, false, '下木板 L1', spec.params.deckT);
+    lay(byId.upper, spec.stack.zUpperBot, true, '上木板', spec.params.deckT);
+    const stopSrc = byId.stop;
+    solids.push({id: 'stop', name: '限位擋塊', yaw: false, solid: extrude(M, [stopSrc.outline, ...stopSrc.holes], T).translate([-PIN_R, -7, spec.stack.zL1Top])});
+  } else {
+    const box = Manifold.cube([70, 70, 40], true);
+    solids.push({id: 'bearing-box', name: '軸承盒（待確認）', yaw: false, solid: box.translate([0, 0, spec.stack.zL2Bot + 20])});
   }
   // 尾桿：本地 x 從偏航軸往順風。世界 x = -本地 x
   {
@@ -555,7 +609,7 @@ export function buildLaserSolids(M, spec) {
         -1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
-        0, 0, spec.zUpperTop, 1,
+        -50, 0, spec.stack.zGearBot, 1,
       ]),
     });
   }
@@ -563,40 +617,35 @@ export function buildLaserSolids(M, spec) {
 }
 
 export function placePrinted(M, spec, printed) {
-  // 輪轂世界矩陣：見檔頭說明
   const hub = printed.hub.solid.transform([
     0, 1, 0, 0,
     0, 0, 1, 0,
     -1, 0, 0, 0,
     ROTOR_X, 0, spec.params.hubZ, 1,
   ]);
-  // 限位環在塔頂孔內，擋片朝順風（−X）。列印時擋片在 +Y。
-  // 要把 +Y 轉到 −X：繞 Z −90°？ +Y → −X 是 Rz(−90) 或 Rz(90)：(x,y)→(−y,x) 把 +Y 送到 −X。Rz(90)。
-  const ring = printed.ring.solid.transform([
-    0, 1, 0, 0,
-    -1, 0, 0, 0,
-    0, 0, 1, 0,
-    0, 0, spec.colTop, 1,
-  ]);
-  // 擋銷在平台下方、R14、迎風側。銷朝下。
-  const pin = printed.pin.solid.transform([
-    1, 0, 0, 0,
-    0, -1, 0, 0,
-    0, 0, -1, 0,
-    14, 0, spec.zUpperBot, 1,
-  ]);
-  // 尾桿座在平台順風側
-  const mount = printed.mount.solid.transform([
-    0, 1, 0, 0,
-    1, 0, 0, 0,
-    0, 0, 1, 0,
-    -70, 0, spec.zUpperTop, 1,
-  ]);
-  return [
-    {id: 'hub', name: '加長輪轂', solid: hub, yaw: true, print: printed.hub},
-    {id: 'ring', name: '限位環', solid: ring, yaw: false, print: printed.ring},
-    {id: 'pin', name: '限位擋銷', solid: pin, yaw: true, print: printed.pin},
-    {id: 'mount', name: '尾桿座', solid: mount, yaw: true, print: printed.mount},
-  ];
+  return [{id: 'hub', name: '加長輪轂', solid: hub, yaw: true, print: printed.hub}];
+}
+
+export function gearCorrectionSvg(spec) {
+  const g = gearCorrection(spec);
+  const map = p => [10 + p[0], 80 - p[1]];
+  const path = pts => `<path d="${pts.map((p, i) => `${i ? 'L' : 'M'}${map(p).map(n => n.toFixed(2)).join(' ')}`).join(' ')}Z"/>`;
+  let cut = path(g.outline);
+  for (const h of g.holes) cut += path(h);
+  g.guides.forEach((gd, i) => {
+    const shift = p => [p[0] + 10, p[1] - 70 - i * 14];
+    cut += `<path d="${gd.map((pt, k) => `${k ? 'L' : 'M'}${shift(pt).map(n => (n + (k ? 0 : 0)).toFixed(2)).join(' ')}`).join(' ')}Z"/>`;
+  });
+  const w = g.L + 40, h = g.W + 80;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">
+<title>齒輪組下板加長尾桿（教具老師修正）</title>
+<desc>待確認：除全長 270＝190+80 的加長量外，孔距、孔徑、內框、寬度都是估算。執行長原齒輪組檔不改。紅線切割，藍字雕刻。1 單位 = 1 mm。</desc>
+<g fill="none" stroke="#ff0000" stroke-width="0.15">${cut}</g>
+<g fill="#0000ff" font-size="3.5" font-family="sans-serif">
+<text x="20" y="12">教具老師修正·齒輪組下板加長尾桿·尺寸待確認</text>
+<text x="${map([g.L / 2, 0])[0]}" y="${map([0, -g.W / 2 - 6])[1]}">前緣在左。孔距 15/55/95/135/175、距邊 ${spec.params.gearEdge}、孔徑 ${spec.params.gearHoleD} 皆待確認</text>
+</g>
+</svg>`;
 }
 function Tsafe(spec) { return spec.T; }
