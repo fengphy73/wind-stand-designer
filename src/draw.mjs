@@ -1,6 +1,6 @@
 // 正視、側視、俯視、偏航掃掠、安全係數圖、爆炸圖。純 SVG，參數一變就重畫。
 import {
-  BOOM, CYL_H, CYL_R, GEAR_FRONT_X, GEAR_OD_80, GEAR_PLATE, GUSSET_H, GUSSET_LEG,
+  BOOM, CYL_H, CYL_R, GEAR_EXT, GEAR_FRONT_X, GEAR_OD_80, GEAR_PLATE, GUSSET_H, GUSSET_LEG,
   HUB_R, OVERHANG, ROTOR_X, TURN, YAW_LIMIT,
 } from './calc.mjs';
 
@@ -21,7 +21,7 @@ export const STEPS = [
   '方管頂端套進下木板 L2（7 mm），四片壁板頂端當十字榫。下框螺帽放進 L2 六角孔，平邊朝向方柱。',
   'L1 用 M4 盤頭由上往下鎖轉盤下框（對角四孔）。十字方向的 Ø12 是讓套筒從下面伸進去。',
   '上木板用 M4 沉頭鎖轉盤上框（十字四孔）。對角 Ø10 是讓位。限位擋塊黏在 L1 頂面，擋銷鎖在上木板、距中心 58 mm。',
-  '齒輪組用上木板的 4 顆 M4 鎖上，可以整組拆下。孔對齒輪下板距前緣 55 與 135 的兩排（距長邊 10）。尾桿插在加長下板的導槽，不鎖在轉盤木板上。穿線若要過齒輪底板，用另存的修正檔，不要改原設計。',
+  '齒輪組用上木板的 4 顆 M4 鎖上，可以整組拆下。兩片底板各 5 mm。下板才往尾端加長 80 mm（全長 270，後段寬 50），上板不加長。尾桿厚 5 mm，底面貼在下板加長段上。孔對下板距前緣 55 與 135 的兩排（距長邊 10）。穿線若要過齒輪底板，用另存的修正檔，不要改原設計。',
   '加長輪轂套上主軸（孔徑請依實測），三片葉片鎖在輪轂圓盤上。導線從柱底出線口拉出，標明正負極。',
 ];
 
@@ -97,16 +97,17 @@ export function sideView(spec, yaw = 0) {
   // 側視只畫偏航角在 XZ 的投影：迎風距離乘 cos
   const rx = ROTOR_X * yawC;
   // 底板
-  d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, spec.T], [-p.base / 2, spec.T]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
+  const zB = spec.baseT;
+  d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, zB], [-p.base / 2, zB]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
   // 柱
-  d.poly([[-spec.OUT / 2, spec.T], [spec.OUT / 2, spec.T], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
-  d.poly([[-spec.INN / 2, spec.T], [spec.INN / 2, spec.T], [spec.INN / 2, spec.colTop], [-spec.INN / 2, spec.colTop]], 'fill="#f6f3ec" stroke="none"');
+  d.poly([[-spec.OUT / 2, zB], [spec.OUT / 2, zB], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
+  d.poly([[-spec.INN / 2, zB], [spec.INN / 2, zB], [spec.INN / 2, spec.colTop], [-spec.INN / 2, spec.colTop]], 'fill="#f6f3ec" stroke="none"');
   // 隔板
   for (const z of spec.diaZ) d.line([-spec.INN / 2, z], [spec.INN / 2, z], 'stroke="#6a4b2b" stroke-width="3"');
   // 補強（側視看到前後兩片的外廓）
   const go = spec.OUT / 2 + GUSSET_LEG;
-  d.poly([[spec.OUT / 2, spec.T], [go, spec.T], [spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
-  d.poly([[-spec.OUT / 2, spec.T], [-go, spec.T], [-spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
+  d.poly([[spec.OUT / 2, zB], [go, zB], [spec.OUT / 2, zB + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
+  d.poly([[-spec.OUT / 2, zB], [-go, zB], [-spec.OUT / 2, zB + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
   // 塔頂
   const slab = (x0, x1, z0, z1, fill) => d.poly([[x0 * yawC, z0], [x1 * yawC, z0], [x1 * yawC, z1], [x0 * yawC, z1]], `fill="${fill}" stroke="#6a4b2b" stroke-width="1.2"`);
   if (spec.stack) {
@@ -114,10 +115,13 @@ export function sideView(spec, yaw = 0) {
     slab(-65, 65, spec.stack.zL1Bot, spec.stack.zL1Top, '#c4a574');
     d.poly([[-36, spec.stack.zTurnBot], [36, spec.stack.zTurnBot], [36, spec.stack.zTurnTop], [-36, spec.stack.zTurnTop]], 'fill="#c5ccd3" stroke="#5c6b78" stroke-width="1.2"');
     slab(-65, 65, spec.stack.zUpperBot, spec.stack.zUpperTop, '#d7b98a');
-    slab(GEAR_FRONT_X - GEAR_PLATE.len - 80, GEAR_FRONT_X, spec.stack.zGearBot, spec.stack.zGearTop, '#8aa0b2');
+    const zLo = spec.stack.zGearBot, zMid = spec.stack.zLowerTop, zHi = spec.stack.zGearTop;
+    slab(GEAR_FRONT_X - GEAR_PLATE.len - GEAR_EXT, GEAR_FRONT_X, zLo, zMid, '#6f8b78');
+    slab(GEAR_FRONT_X - GEAR_PLATE.len, GEAR_FRONT_X, zMid, zHi, '#8aa0b2');
+    const neckX = GEAR_FRONT_X - GEAR_PLATE.len - 20;
+    slab(neckX - BOOM.len, neckX, zMid, zMid + BOOM.thick, '#6a4b2b');
   }
   const gf = GEAR_FRONT_X * yawC;
-  const zPlat = spec.stack ? spec.stack.zGearTop : spec.zUpperTop;
   d.line([rx, p.hubZ], [gf, p.hubZ], 'stroke="#3e5160" stroke-width="3"');
   d.circ(rx, p.hubZ, 8, 'fill="#2f6f9f"');
   // 葉片圓
@@ -126,7 +130,6 @@ export function sideView(spec, yaw = 0) {
   d.line([rx, p.hubZ - (p.blade + HUB_R)], [rx, p.hubZ + (p.blade + HUB_R)], `stroke="${over ? bad : '#1f7a4d'}" stroke-width="2" stroke-dasharray="6 4"`);
   // 尾翼
   const arm = -p.tailArm * yawC;
-  d.line([0, zPlat + 2], [arm, zPlat + 2], 'stroke="#6a4b2b" stroke-width="4"');
   const finX = arm, finTop = spec.tailTop, finBot = spec.tailBot;
   d.poly([[finX - p.tailLen / 2 * yawC, finBot], [finX + p.tailLen / 2 * Math.max(yawC, 0.15), finBot], [finX + p.tailLen / 2 * Math.max(yawC, 0.15), finTop], [finX - p.tailLen / 2 * yawC, finTop]], 'fill="#e09a3e" fill-opacity="0.85" stroke="#8a5a12" stroke-width="1.2"');
 
@@ -156,12 +159,13 @@ export function frontView(spec) {
   const over = spec.env.tipOver > 0 || spec.env.topOver > 0;
   const cyl = over ? bad : okc;
   d.poly([[-CYL_R, 0], [CYL_R, 0], [CYL_R, CYL_H], [-CYL_R, CYL_H]], `fill="${cyl}" fill-opacity="0.06" stroke="${cyl}" stroke-width="2" stroke-dasharray="10 6"`);
-  d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, spec.T], [-p.base / 2, spec.T]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
-  d.poly([[-spec.OUT / 2, spec.T], [spec.OUT / 2, spec.T], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
+  const zB = spec.baseT;
+  d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, zB], [-p.base / 2, zB]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
+  d.poly([[-spec.OUT / 2, zB], [spec.OUT / 2, zB], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
   d.poly([[-65, spec.stack.zL2Bot], [65, spec.stack.zL2Bot], [65, spec.stack.zGearTop], [-65, spec.stack.zGearTop]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.9"');
   // 左右補強
-  d.poly([[-spec.OUT / 2, spec.T], [-spec.OUT / 2 - GUSSET_LEG, spec.T], [-spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
-  d.poly([[spec.OUT / 2, spec.T], [spec.OUT / 2 + GUSSET_LEG, spec.T], [spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
+  d.poly([[-spec.OUT / 2, zB], [-spec.OUT / 2 - GUSSET_LEG, zB], [-spec.OUT / 2, zB + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
+  d.poly([[spec.OUT / 2, zB], [spec.OUT / 2 + GUSSET_LEG, zB], [spec.OUT / 2, zB + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
   d.circ(0, p.hubZ, p.blade + HUB_R, `fill="none" stroke="${spec.env.tipOver > 0 ? bad : '#1f7a4d'}" stroke-width="3"`);
   d.circ(0, p.hubZ, HUB_R, 'fill="#2f6f9f" stroke="#1d4e73" stroke-width="1.5"');
   for (let k = 0; k < 3; k++) {
@@ -209,8 +213,14 @@ export function topView(spec, yaw = 0) {
 
   const deck = [[65, 65], [65, -65], [-65, -65], [-65, 65]].map(([x, y]) => rot(x, y));
   d.poly(deck, 'fill="#d7b98a" fill-opacity="0.9" stroke="#6a4b2b" stroke-width="1.2"');
-  const gear = [[GEAR_FRONT_X, 50], [GEAR_FRONT_X, -50], [GEAR_FRONT_X - 210, -50], [GEAR_FRONT_X - 210, -25], [GEAR_FRONT_X - 270, -25], [GEAR_FRONT_X - 270, 25], [GEAR_FRONT_X - 210, 25], [GEAR_FRONT_X - 210, 50]].map(([x, y]) => rot(x, y));
-  d.poly(gear, 'fill="#8aa0b2" fill-opacity="0.85" stroke="#3e5160" stroke-width="1.2"');
+  const half = p.gearWid / 2;
+  const front = GEAR_FRONT_X;
+  const neck = GEAR_PLATE.len + 20;
+  const full = GEAR_PLATE.len + GEAR_EXT;
+  const lower = [[front, half], [front, -half], [front - neck, -half], [front - neck, -25], [front - full, -25], [front - full, 25], [front - neck, 25], [front - neck, half]].map(([x, y]) => rot(x, y));
+  const upper = [[front, half], [front, -half], [front - GEAR_PLATE.len, -half], [front - GEAR_PLATE.len, half]].map(([x, y]) => rot(x, y));
+  d.poly(lower, 'fill="#6f8b78" fill-opacity="0.9" stroke="#2f4a3c" stroke-width="1.2"');
+  d.poly(upper, 'fill="#8aa0b2" fill-opacity="0.75" stroke="#3e5160" stroke-width="1.2"');
   // 建議穿線
   const yawP = rot(0, 0);
   d.circ(yawP[0], yawP[1], 10, 'fill="none" stroke="#1d4e89" stroke-width="1.5" stroke-dasharray="3 2"');
@@ -282,7 +292,7 @@ export function explodeView(spec) {
   let z = 28;
   const blocks = [];
   const add = (h, draw, label) => { blocks.push({z, h, draw, label}); z += h + gap; };
-  add(spec.T, (d, z0) => d.poly([[-p.base / 2, z0], [p.base / 2, z0], [p.base / 2, z0 + spec.T], [-p.base / 2, z0 + spec.T]], 'fill="#c4a574" stroke="#6a4b2b"'), '1 底板');
+  add(spec.baseT, (d, z0) => d.poly([[-p.base / 2, z0], [p.base / 2, z0], [p.base / 2, z0 + spec.baseT], [-p.base / 2, z0 + spec.baseT]], 'fill="#c4a574" stroke="#6a4b2b"'), '1 底板');
   add(GUSSET_H, (d, z0) => {
     d.poly([[-spec.OUT / 2, z0], [spec.OUT / 2, z0], [spec.OUT / 2, z0 + 20], [-spec.OUT / 2, z0 + 20]], 'fill="#d7b98a" stroke="#6a4b2b"');
     d.poly([[spec.OUT / 2, z0], [spec.OUT / 2 + 70, z0], [spec.OUT / 2, z0 + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b"');

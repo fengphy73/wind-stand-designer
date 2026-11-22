@@ -1,8 +1,8 @@
-// 雷切輪廓、900×600 排版、3D 列印實體。紅線切割、藍線雕刻，單位 mm，不另做縮放。
+// 雷切輪廓、600×450 排版、3D 列印實體。紅線切割、藍線雕刻，單位 mm，不另做縮放。
 import {
   COLLAR, COL_TENON_W, DIA_TENON_W, DIA_HOLE, GUSSET_H, GUSSET_LEG, GUSSET_TENON,
   HUB_LEN, HUB_R, ROTOR_X, SHEET, TURN, WIRE, BOOM, GEAR_FRONT_X, GEAR_PLATE, GEAR_EXT,
-  GEAR_HOLE_XS, STUD_XS, DECK, PIN_R, HEX_CORNER,
+  GEAR_HOLE_XS, STUD_XS, DECK, PIN_R, HEX_CORNER, VERSION,
 } from './calc.mjs';
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -75,9 +75,10 @@ export function diaphragmPoly(spec) {
 }
 
 export function gussetPoly(spec) {
-  const T = spec.T, L = GUSSET_LEG, H = GUSSET_H, tw = GUSSET_TENON;
+  const L = GUSSET_LEG, H = GUSSET_H, tw = GUSSET_TENON;
+  const tab = spec.baseT;
   const x0 = (L - tw) / 2, x1 = x0 + tw;
-  return ccw([[0, 0], [x0, 0], [x0, -T], [x1, -T], [x1, 0], [L, 0], [0, H]]);
+  return ccw([[0, 0], [x0, 0], [x0, -tab], [x1, -tab], [x1, 0], [L, 0], [0, H]]);
 }
 
 export function hex(cx, cy, af, rotDeg = 0) {
@@ -160,7 +161,8 @@ export function laserParts(spec) {
     engrave.push({kind: 'rect', x: inner + m, y: half - m - 28, w: half - inner - 2 * m, h: 28});
   }
   engrave.push({kind: 'cross', x: 0, y: 0, s: 12});
-  push(part('base', '底板', 1, basePts, baseHoles, engrave, '底板'));
+  engrave.push({kind: 'text', text: `底板 ${spec.params.base}×${spec.params.baseT} mm`, x: 0, y: 28});
+  push(part('base', `底板 ${spec.params.base}×${spec.params.base}×${spec.params.baseT}`, 1, basePts, baseHoles, engrave, '底板'));
 
   const wOut = wallOutline(spec);
   for (let i = 0; i < 2; i++) push(part('wall-slot-' + i, '壁板（隔板槽）', 1, wOut, wallHoles(spec, 'slot'), [{kind: 'text', text: '上·槽', x: 0, y: spec.wallLen - 14}], '壁板槽'));
@@ -191,6 +193,16 @@ export function laserParts(spec) {
 
   const boom = boomGeom(spec);
   push(part('boom', '尾桿 30×5×350', 1, boom.outline, boom.holes, boom.eng, '尾桿'));
+
+  const gear = gearCorrection(spec);
+  push(part('gear-lower', '齒輪下板加長 270×5（接尾）', 1, gear.outline, gear.holes, [
+    {kind: 'text', text: '下板·5 mm·加長接尾', x: 40, y: gear.W / 2 - 8},
+  ], '下板'));
+  gear.guides.forEach((gd, i) => {
+    push(part('gear-guide-' + i, '尾桿導槽條', 1, gd, [], [
+      {kind: 'text', text: '導槽', x: 30, y: 4},
+    ], '導槽'));
+  });
 
   return parts;
 }
@@ -294,52 +306,92 @@ function part(id, name, count, outline, holes, eng, short) {
   return {id, name, count, short, outline, holes, eng, ...b};
 }
 
+export const BASE_MARGIN = 10;
+
 export function layoutSheets(spec) {
   const parts = laserParts(spec);
-  const base = parts[0];
-  const rest = parts.slice(1);
+  const base = parts.find(p => p.id === 'base');
+  const pack = parts.filter(p => p.id !== 'base');
   const gap = 3.5;
-  const sheets = [
-    {id: 1, title: '第 1 張　塔身與底板', items: [{part: base, x: -base.x0, y: -base.y0}]},
-    {id: 2, title: '第 2 張　上下層板、尾桿、補強與備品', items: []},
-  ];
-  // 底板放在左下（圖紙 y 向下，零件本地 +y 向上，所以圖紙 y = oy - (py - y0)）。
-  // 這裡 x,y 是「本地原點」在圖紙上的位置？改成記錄平移：圖紙 = (ox + px, oy - py)，並讓 bbox 落在範圍內。
-  // 重新定義：item.ox, item.oy 使圖紙座標 = (ox + localX, oy - localY)，且零件 bbox 的圖紙範圍在紙內。
-  function place(sheet, part, ox, oy) {
-    sheet.items.push({part, ox, oy});
-  }
-  // 底板：本地 ±base/2，放到圖紙左上角對齊 0,0（圖紙 y 向下，本地 +y 在圖紙是向上，所以本地 +base/2 放到圖紙 y=0）
-  sheets[0].items = [];
-  place(sheets[0], base, -base.x0, base.y1); // 本地 x0→圖紙 0，本地 y1→圖紙 0
-
-  const stripX = base.w + gap;
-  let x = stripX, y = gap, rowH = 0, si = 0;
+  const margin = 2;
+  const limitW = SHEET.w - margin;
+  const limitH = SHEET.h - margin;
+  const sheets = [];
   const overflow = [];
-  for (const part of rest) {
-    const pw = part.w, ph = part.h;
-    if (x + pw > SHEET.w - 2) {
-      x = si === 0 ? stripX : gap;
-      y += rowH + gap;
-      rowH = 0;
+
+  function orientations(part) {
+    const list = [];
+    if (part.w <= limitW + 0.05 && part.h <= limitH + 0.05) list.push({rot: 0, w: part.w, h: part.h});
+    if (Math.abs(part.w - part.h) > 0.05 && part.h <= limitW + 0.05 && part.w <= limitH + 0.05) {
+      list.push({rot: 90, w: part.h, h: part.w});
     }
-    if (y + ph > SHEET.h - 2) {
-      if (si === 0) { si = 1; x = gap; y = gap; rowH = 0; }
-    }
-    if (y + ph > SHEET.h - 2) overflow.push(part.name);
-    // 本地 (x0,y1) 放到圖紙 (x,y)
-    const ox = x - part.x0;
-    const oy = y + part.y1;
-    place(sheets[si], part, ox, oy);
-    x += pw + gap;
-    rowH = Math.max(rowH, ph);
+    list.sort((a, b) => a.h - b.h || a.w - b.w);
+    return list;
   }
-  return {sheets, overflow, parts};
+
+  function tryPlace(sheet, part, orient) {
+    const pw = orient.w, ph = orient.h;
+    for (const row of sheet.rows) {
+      if (row.x + pw <= limitW + 0.05 && ph <= row.h + 0.05) {
+        sheet.items.push({part, rot: orient.rot, placeX: row.x, placeY: row.y});
+        row.x += pw + gap;
+        return true;
+      }
+    }
+    const y = sheet.rows.length ? sheet.rows[sheet.rows.length - 1].y + sheet.rows[sheet.rows.length - 1].h + gap : margin;
+    if (y + ph <= limitH + 0.05 && margin + pw <= limitW + 0.05) {
+      sheet.rows.push({y, h: ph, x: margin + pw + gap});
+      sheet.items.push({part, rot: orient.rot, placeX: margin, placeY: y});
+      return true;
+    }
+    return false;
+  }
+
+  const ordered = [...pack].sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.h - a.h);
+  for (const part of ordered) {
+    const orients = orientations(part);
+    if (!orients.length) {
+      overflow.push(`${part.name}（${Math.round(part.w)}×${Math.round(part.h)} mm，大於板材 ${SHEET.w}×${SHEET.h}）`);
+      continue;
+    }
+    let placed = false;
+    for (const sheet of sheets) {
+      for (const orient of orients) {
+        if (tryPlace(sheet, part, orient)) { placed = true; break; }
+      }
+      if (placed) break;
+    }
+    if (!placed) {
+      const sheet = {id: sheets.length + 1, items: [], rows: []};
+      sheets.push(sheet);
+      for (const orient of orients) {
+        if (tryPlace(sheet, part, orient)) { placed = true; break; }
+      }
+      if (!placed) {
+        sheets.pop();
+        overflow.push(`${part.name}（${Math.round(part.w)}×${Math.round(part.h)} mm）`);
+      }
+    }
+  }
+
+  const area = SHEET.w * SHEET.h;
+  for (const sheet of sheets) {
+    const used = sheet.items.reduce((s, it) => s + it.part.w * it.part.h, 0);
+    sheet.util = used / area;
+    sheet.partNames = sheet.items.map(it => it.part.name);
+  }
+  return {sheets, overflow, parts, base, sheet: {w: SHEET.w, h: SHEET.h}};
+}
+
+function mapLocal(item, p) {
+  const {part, rot, placeX, placeY} = item;
+  if (rot === 90) return [placeX + (part.y1 - p[1]), placeY + (p[0] - part.x0)];
+  return [placeX + (p[0] - part.x0), placeY + (part.y1 - p[1])];
 }
 
 function sheetItemSvg(item) {
-  const {part, ox, oy} = item;
-  const map = p => [ox + p[0], oy - p[1]];
+  const {part} = item;
+  const map = p => mapLocal(item, p);
   let cut = mapPath(part.outline, map);
   for (const h of part.holes) cut += mapPath(h, map);
   let eng = '';
@@ -348,9 +400,12 @@ function sheetItemSvg(item) {
       const [x, y] = map([e.x, e.y]);
       eng += `<text x="${x.toFixed(2)}" y="${y.toFixed(2)}" fill="#0000ff" font-size="3.2" font-family="sans-serif" text-anchor="middle">${escapeXml(e.text)}</text>`;
     } else if (e.kind === 'rect') {
-      const [x, y] = map([e.x, e.y + e.h]); // 本地 y 向上，矩形的上邊是 y+h
-      eng += `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${e.w.toFixed(2)}" height="${e.h.toFixed(2)}"/>`;
-      if (e.label) eng += `<text x="${(x + e.w / 2).toFixed(2)}" y="${(y + e.h / 2).toFixed(2)}" fill="#0000ff" font-size="3.2" font-family="sans-serif" text-anchor="middle">${escapeXml(e.label)}</text>`;
+      const a = map([e.x, e.y]);
+      const b = map([e.x + e.w, e.y + e.h]);
+      const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]);
+      const w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
+      eng += `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}"/>`;
+      if (e.label) eng += `<text x="${(x + w / 2).toFixed(2)}" y="${(y + h / 2).toFixed(2)}" fill="#0000ff" font-size="3.2" font-family="sans-serif" text-anchor="middle">${escapeXml(e.label)}</text>`;
     } else if (e.kind === 'circle') {
       const [x, y] = map([e.x, e.y]);
       eng += `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${e.r.toFixed(2)}"/>`;
@@ -366,36 +421,62 @@ function escapeXml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-export function laserSvgs(spec) {
-  const {sheets, overflow} = layoutSheets(spec);
-  return {
-    overflow,
-    sheets: sheets.map(sh => {
-      let cut = '', eng = '';
-      for (const it of sh.items) {
-        const g = sheetItemSvg(it);
-        cut += g.cut;
-        eng += g.eng;
-      }
-      const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${SHEET.w}mm" height="${SHEET.h}mm" viewBox="0 0 ${SHEET.w} ${SHEET.h}">
-<title>${escapeXml(sh.title)}</title>
-<desc>風力發電底座支架設計器 v1.0 ${escapeXml(sh.title)}。1 單位 = 1 mm，請以實際尺寸匯入，不要為了軟體比例另做縮放。紅 #ff0000 切割，藍 #0000ff 雕刻。原點在左上角，Y 向下。</desc>
+function renderSheet(items, w, h, title, desc) {
+  let cut = '', eng = '';
+  for (const it of items) {
+    const g = sheetItemSvg(it);
+    cut += g.cut;
+    eng += g.eng;
+  }
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">
+<title>${escapeXml(title)}</title>
+<desc>${escapeXml(desc)}</desc>
 <g id="cut" fill="none" stroke="#ff0000" stroke-width="0.15" stroke-linejoin="round">${cut}</g>
 <g id="engrave" fill="none" stroke="#0000ff" stroke-width="0.12">${eng}</g>
 </svg>`;
-      return {id: sh.id, title: sh.title, svg, items: sh.items.map(it => ({id: it.part.id, name: it.part.name, w: it.part.w, h: it.part.h, ox: it.ox, oy: it.oy, x0: it.part.x0, y0: it.part.y0, x1: it.part.x1, y1: it.part.y1}))};
-    }),
+  return svg;
+}
+
+export function laserSvgs(spec) {
+  const lay = layoutSheets(spec);
+  const {sheets, overflow, base} = lay;
+  const n = sheets.length;
+  const pack = sheets.map(sh => {
+    const pct = Math.round(sh.util * 1000) / 10;
+    const title = `第 ${sh.id} 張／共 ${n} 張　${SHEET.w}×${SHEET.h} mm　零件 ${sh.items.length}　外框利用率 ${pct}%`;
+    const desc = `風力發電底座支架設計器 v${VERSION} ${title}。1 單位 = 1 mm，請以實際尺寸匯入，不要為了軟體比例另做縮放。紅 #ff0000 切割，藍 #0000ff 雕刻。原點在左上角，Y 向下。`;
+    return {
+      id: sh.id, title, svg: renderSheet(sh.items, SHEET.w, SHEET.h, title, desc), util: sh.util, w: SHEET.w, h: SHEET.h,
+      partNames: sh.partNames,
+      items: sh.items.map(it => ({id: it.part.id, name: it.part.name, w: it.part.w, h: it.part.h, rot: it.rot, placeX: it.placeX, placeY: it.placeY})),
+    };
+  });
+  const edge = Math.round(base.w);
+  const notice = `底板需另用大板切割（至少 ${edge}×${edge} 加邊距）`;
+  const bw = Math.ceil(base.w + BASE_MARGIN * 2);
+  const bh = Math.ceil(base.h + BASE_MARGIN * 2);
+  const baseUtil = (base.w * base.h) / (bw * bh);
+  const baseTitle = `底板大板　${bw}×${bh} mm　零件 1　外框利用率 ${Math.round(baseUtil * 1000) / 10}%`;
+  const baseItem = {part: base, rot: 0, placeX: BASE_MARGIN, placeY: BASE_MARGIN};
+  const baseSheet = {
+    id: 'base', title: baseTitle, notice, w: bw, h: bh, util: baseUtil,
+    svg: renderSheet([baseItem], bw, bh, baseTitle, `${notice}。風力發電底座支架設計器 v${VERSION}。圖紙每邊留 ${BASE_MARGIN} mm。1 單位 = 1 mm，請以實際尺寸匯入。紅 #ff0000 切割，藍 #0000ff 雕刻。`),
+    partNames: [base.name],
+  };
+  return {
+    overflow,
+    count: n,
+    sheet: {w: SHEET.w, h: SHEET.h},
+    sheets: pack,
+    base: baseSheet,
   };
 }
 
 export function sheetBounds(item) {
-  // 圖紙座標： (ox+localX, oy-localY)
-  const {part, ox, oy} = item;
-  const xs = [ox + part.x0, ox + part.x1];
-  const ys = [oy - part.y0, oy - part.y1];
-  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-  return {x0, y0, x1, y1, w: x1 - x0, h: y1 - y0};
+  const {part, rot = 0, placeX, placeY} = item;
+  if (rot === 90) return {x0: placeX, y0: placeY, x1: placeX + part.h, y1: placeY + part.w, w: part.h, h: part.w};
+  return {x0: placeX, y0: placeY, x1: placeX + part.w, y1: placeY + part.h, w: part.w, h: part.h};
 }
 
 // ── 3D 列印 ──
@@ -525,7 +606,8 @@ export function buildLaserSolids(M, spec) {
   ];
 
   // 底板 z=0..T，輪廓在 XY（本地 y 就是世界 Y）
-  add('base', [byId.base.outline, ...byId.base.holes], T, mat4([1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 0]), '底板');
+  const baseT = spec.baseT;
+  add('base', [byId.base.outline, ...byId.base.holes], baseT, mat4([1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 0]), '底板');
 
   // 壁板：輪廓 (v→本地 x，高度→本地 y)，擠出厚度後立到四面。
   // 未旋轉時本地 x→世界 X、本地 y→世界 Z、厚度→世界 +Y，外側面在 +Y。
@@ -558,7 +640,7 @@ export function buildLaserSolids(M, spec) {
   // 套框
   {
     const src = byId.collar;
-    const solid = extrude(M, [src.outline, ...src.holes], T).translate([0, 0, T]);
+    const solid = extrude(M, [src.outline, ...src.holes], T).translate([0, 0, baseT]);
     solids.push({id: 'collar', name: '柱腳套框', solid});
   }
 
@@ -576,7 +658,7 @@ export function buildLaserSolids(M, spec) {
       0, 1, 0, 0,   // local x → world Y
       0, 0, 1, 0,   // local y → world Z
       1, 0, 0, 0,   // local z → world X
-      -T / 2, spec.OUT / 2, T, 1,
+      -T / 2, spec.OUT / 2, baseT, 1,
     ]);
     for (let k = 0; k < 4; k++) {
       const c = Math.cos(k * Math.PI / 2), s = Math.sin(k * Math.PI / 2);
@@ -601,16 +683,32 @@ export function buildLaserSolids(M, spec) {
     const box = Manifold.cube([70, 70, 40], true);
     solids.push({id: 'bearing-box', name: '軸承盒（待確認）', yaw: false, solid: box.translate([0, 0, spec.stack.zL2Bot + 20])});
   }
-  // 尾桿：本地 x 從偏航軸往順風。世界 x = -本地 x
+  // 齒輪下板：前緣在迎風，本地 +x 往尾端。只擠出下板那 5 mm。上板不加長，留在示意裡。
+  {
+    const src = byId['gear-lower'];
+    if (src && spec.stack) {
+      solids.push({
+        id: 'gear-lower', name: src.name, yaw: true,
+        solid: extrude(M, [src.outline, ...src.holes], spec.params.gearPlateT).transform([
+          -1, 0, 0, 0,
+          0, 1, 0, 0,
+          0, 0, 1, 0,
+          GEAR_FRONT_X, 0, spec.stack.zGearBot, 1,
+        ]),
+      });
+    }
+  }
+  // 尾桿厚 5 mm，底面貼在下板頂面。從加長段開始縮成寬 50 的地方往尾端伸出，不穿進上板。
   {
     const src = byId.boom;
+    const neckX = GEAR_FRONT_X - (GEAR_PLATE.len + 20);
     solids.push({
       id: 'boom', name: '尾桿', yaw: true,
-      solid: extrude(M, [src.outline, ...src.holes], T).transform([
+      solid: extrude(M, [src.outline, ...src.holes], BOOM.thick).transform([
         -1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
-        -50, 0, spec.stack.zGearBot, 1,
+        neckX, 0, spec.stack.zLowerTop, 1,
       ]),
     });
   }
@@ -641,7 +739,7 @@ export function gearCorrectionSvg(spec) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">
 <title>齒輪組下板加長尾桿（教具老師修正）</title>
-<desc>教具老師修正，另存新檔。原齒輪組設計不改。偏航軸（距前緣 102.5 mm）開 Ø20 穿線孔。另含往後加長 80 mm 的尾桿段。孔距、孔徑、內框、寬度除板長 190 外都待確認。紅線切割，藍字雕刻。1 單位 = 1 mm。</desc>
+<desc>教具老師修正，另存新檔。原齒輪組設計不改。這是下板：厚 5 mm（兩片各 5 mm，總厚 10 mm，上板不加長）。偏航軸（距前緣 102.5 mm）開 Ø20 穿線孔。另含往後加長 80 mm 的尾桿段。孔距、孔徑、內框、寬度除板長 190 外都待確認。紅線切割，藍字雕刻。1 單位 = 1 mm。</desc>
 <g fill="none" stroke="#ff0000" stroke-width="0.15">${cut}</g>
 <g fill="#0000ff" font-size="3.5" font-family="sans-serif">
 <text x="20" y="12">教具老師修正·另存新檔·原齒輪組不改·偏航軸 Ø20 穿線</text>

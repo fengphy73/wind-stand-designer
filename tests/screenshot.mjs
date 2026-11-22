@@ -30,6 +30,9 @@ try {
   ok(/葉尖最大半徑/.test(text) && /安全係數/.test(text), '摘要有葉尖半徑與安全係數');
   const sf4 = await page.$eval('[data-k="sf4"]', el => el.textContent);
   ok(Number(sf4) > 1.5, `預設 4 m/s 係數 ${sf4} 大於 1.5`);
+  const laserTitle = await page.$eval('#laser-title', el => el.textContent);
+  ok(laserTitle.includes('600×450') && /共\s+\d+\s+張/.test(laserTitle), '排版標題 ' + laserTitle);
+  ok(text.includes('2 片') && text.includes('總厚 10'), '摘要寫出兩片各 5 mm');
   const shots = [
     ['01-summary', '#summary'],
     ['02-3d', '#view-3d'],
@@ -42,6 +45,12 @@ try {
     const el = await page.$(sel);
     await el.screenshot({path: `${outDir}/${name}.png`});
     ok(true, '截圖 ' + name);
+  }
+  const blocks = await page.$$('[data-sheet]');
+  for (const el of blocks) {
+    const id = await el.evaluate(n => n.dataset.sheet);
+    await el.screenshot({path: `${outDir}/sheet-${id}.png`});
+    ok(true, '截圖 板材 ' + id);
   }
   await page.evaluate(() => window.__wsd.pose(60));
   await new Promise(r => setTimeout(r, 200));
