@@ -1,0 +1,21 @@
+{
+  "name": "wind-stand-designer",
+  "version": "1.0.0",
+  "description": "風力發電底座支架設計器：KidWind 2026 亞洲聯賽方案 D（雷切方管塔＋3D 列印）",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "build:pages": "node build.mjs --pages",
+    "test": "node tests/calc.test.mjs && node tests/geometry.test.mjs && node build.mjs --pages && node tests/screenshot.mjs"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "manifold-3d": "^3.5.5",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "puppeteer-core": "^24.15.0"
+  }
+}
