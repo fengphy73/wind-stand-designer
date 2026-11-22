@@ -1,0 +1,57 @@
+*{box-sizing:border-box}
+body{margin:0;font-family:"WenQuanYi Micro Hei","Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;color:#1d2a33;background:#e7e1d6}
+header{background:#7a1f2b;color:#fff;padding:14px 20px}
+header h1{margin:0;font-size:22px;font-weight:700}
+header small{font-weight:400;opacity:.85;font-size:14px}
+header p{margin:4px 0 0;opacity:.92;font-size:14px;line-height:1.5}
+main{display:grid;grid-template-columns:340px 1fr;gap:14px;padding:14px;align-items:start}
+@media(max-width:980px){main{grid-template-columns:1fr}}
+.panel{background:#fff;border-radius:12px;padding:12px 14px}
+fieldset{border:1px solid #eadfce;border-radius:8px;margin:0 0 10px;padding:8px 10px}
+legend{font-weight:700;font-size:13px;color:#7a1f2b;padding:0 4px}
+.row{display:grid;grid-template-columns:1fr 86px 36px;gap:6px;align-items:center;margin:5px 0;font-size:13px}
+.row em{font-style:normal;color:#667;font-size:12px}
+input,select,button{font:inherit}
+input,select{padding:4px 6px;border:1px solid #d5cbbd;border-radius:6px;width:100%;background:#fff}
+button{padding:7px 10px;border:1px solid #d5cbbd;border-radius:8px;background:#fff;cursor:pointer}
+button:hover{background:#f6f1ea}
+button.primary{background:#7a1f2b;color:#fff;border-color:#7a1f2b}
+button.go{background:#1b7f4a;color:#fff;border-color:#1b7f4a;width:100%;margin-top:4px}
+.btns{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.stack{display:flex;flex-direction:column;gap:12px}
+.card h2{margin:0 0 8px;font-size:16px;color:#7a1f2b}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+@media(max-width:720px){.metrics{grid-template-columns:1fr 1fr}}
+.metric{background:#f6f3ec;border-radius:8px;padding:8px 10px}
+.metric b{display:block;font-size:22px;line-height:1.2}
+.metric span{font-size:12px;color:#5c6b78}
+.metric.ok b{color:#1b7f4a}
+.metric.bad b{color:#b42318}
+.note{font-size:13px;line-height:1.55;color:#3d4c57}
+.warn{background:#fdecea;border-left:4px solid #b42318;color:#7a1f2b;padding:6px 8px;margin:6px 0;font-size:13px;line-height:1.5}
+.oknote{background:#e8f6ee;border-left:4px solid #1b7f4a;color:#145c36;padding:6px 8px;margin:6px 0;font-size:13px;line-height:1.5}
+.views{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.views .wide{grid-column:1/-1}
+.fig{background:#f6f3ec;border-radius:8px;min-height:220px;height:280px;overflow:hidden}
+.fig.tall{height:340px}
+.fig svg{display:block;width:100%;height:100%}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px;margin-bottom:8px}
+.toolbar label{display:flex;gap:6px;align-items:center}
+#canvas{height:460px;border-radius:8px;overflow:hidden;background:#f3efe7}
+#canvas canvas{display:block}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border-bottom:1px solid #eadfce;padding:5px 6px;text-align:left;vertical-align:top}
+.steps{margin:0;padding-left:1.2em}
+.steps li{margin:4px 0;line-height:1.5}
+.laser{background:#fff;border:1px solid #eadfce;border-radius:8px;overflow:auto;max-height:640px}
+.laser svg{width:100%;height:auto;display:block;background:#fff}
+.laser svg #cut{stroke-width:1.6px;vector-effect:non-scaling-stroke}
+.laser svg #engrave{stroke-width:1px;vector-effect:non-scaling-stroke}
+.laser svg text{font-size:12px}
+.sf{display:flex;gap:8px;flex-wrap:wrap}
+.pill{border-radius:999px;padding:4px 10px;font-weight:700;font-size:13px}
+.pill.ok{background:#e8f6ee;color:#145c36}
+.pill.bad{background:#fdecea;color:#7a1f2b}
+#chart{height:280px}
+.compare{font-size:13px;width:100%}
+kbd{font-family:inherit;background:#f6f3ec;padding:0 4px;border-radius:4px}
