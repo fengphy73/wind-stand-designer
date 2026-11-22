@@ -234,7 +234,7 @@ function yawPlates(spec) {
   });
   const upper = part('upper', '上木板 130×130×7', 1, outline, [...wire, ...cross, ...diag, ...studs], [
     {kind: 'text', text: '上木板·7 mm', x: 0, y: S - 8},
-    {kind: 'text', text: '沉頭锪孔（待鉆）', x: 0, y: -S + 8},
+    {kind: 'text', text: '4×M4 鎖齒輪組，整組可拆', x: 0, y: -S + 8},
     ...sink,
   ], '上木板');
   const l1 = part('l1', '下木板 L1 130×130×7', 1, outline, [...wire, ...diag.map((_, i) => at([45, 135, 225, 315][i], TURN.boltR, 4.2)), ...clear12], [
@@ -274,6 +274,7 @@ export function gearCorrection(spec) {
   const inner = rect((GEAR_PLATE.len - p.gearInnerL) / 2, -p.gearInnerW / 2, (GEAR_PLATE.len + p.gearInnerL) / 2, p.gearInnerW / 2);
   holes.push(inner);
   holes.push(circlePts(neck + 20, 0, 2.1, 16), circlePts(neck + 50, 0, 2.1, 16));
+  holes.push(circlePts(GEAR_FRONT_X, 0, 10, 32));
   const guides = [rect(0, 0, 60, 8), rect(0, 0, 60, 8)];
   return {outline, holes, guides, L, W, pending: true};
 }
@@ -640,10 +641,10 @@ export function gearCorrectionSvg(spec) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">
 <title>齒輪組下板加長尾桿（教具老師修正）</title>
-<desc>待確認：除全長 270＝190+80 的加長量外，孔距、孔徑、內框、寬度都是估算。執行長原齒輪組檔不改。紅線切割，藍字雕刻。1 單位 = 1 mm。</desc>
+<desc>教具老師修正，另存新檔。原齒輪組設計不改。偏航軸（距前緣 102.5 mm）開 Ø20 穿線孔。另含往後加長 80 mm 的尾桿段。孔距、孔徑、內框、寬度除板長 190 外都待確認。紅線切割，藍字雕刻。1 單位 = 1 mm。</desc>
 <g fill="none" stroke="#ff0000" stroke-width="0.15">${cut}</g>
 <g fill="#0000ff" font-size="3.5" font-family="sans-serif">
-<text x="20" y="12">教具老師修正·齒輪組下板加長尾桿·尺寸待確認</text>
+<text x="20" y="12">教具老師修正·另存新檔·原齒輪組不改·偏航軸 Ø20 穿線</text>
 <text x="${map([g.L / 2, 0])[0]}" y="${map([0, -g.W / 2 - 6])[1]}">前緣在左。孔距 15/55/95/135/175、距邊 ${spec.params.gearEdge}、孔徑 ${spec.params.gearHoleD} 皆待確認</text>
 </g>
 </svg>`;

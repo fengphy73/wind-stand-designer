@@ -14,7 +14,7 @@ const app = $('#app');
 app.innerHTML = `
 <header>
   <h1>風力發電底座支架設計器 <small>v${VERSION}</small></h1>
-  <p>給執行長的 KidWind 2026 亞洲聯賽（台灣版 AESEA v2.4）方案 D：5 mm 夾板雷切 50×50 指接方柱、底板、偏航轉盤與加長輪轂。預覽和 STL 用同一個網格。</p>
+  <p>KidWind 2026 亞洲聯賽（台灣版 AESEA v2.4）方案 D：5 mm 夾板雷切 50×50 指接方柱、底板、偏航轉盤與加長輪轂。預覽和 STL 用同一個網格。</p>
 </header>
 <main>
   <section class="panel" id="form"></section>
@@ -244,7 +244,7 @@ function paint2d() {
     ${warns.map(w => `<div class="warn">${w}</div>`).join('') || '<div class="oknote">以轉盤頂面為準，葉尖、尾翼、底座角與最高點都在 Ø100 cm × 高 100 cm 圓柱內。</div>'}
     ${ground}
     <p class="note">主軸中心 <b data-k="shaft">${spec.params.hubZ.toFixed(1)}</b> mm，離底板頂面 ${(spec.params.hubZ - spec.T).toFixed(0)} mm。葉尖到底板頂面 <b data-k="tipBase">${spec.clearance.abovePlate.toFixed(1)}</b> mm（扣 40 mm 彎曲預留後 ${spec.clearance.abovePlateAfter.toFixed(1)} mm）。塔身（底板頂面到 L2 頂）<b>${spec.stack.towerAbove.toFixed(1)}</b> mm。若不算齒輪底板厚，約 ${spec.stack.approx397.toFixed(1)} mm。</p>
-    <p class="note">${spec.turnNote} 上木板 130×130×${state.deckT}，M4 沉頭鎖上框（十字），對角 Ø10 讓位，另有 4 支 M4×25 螺柱對齒輪孔 55／135。L1 鎖下框（對角），十字 Ø12 讓套筒。L2 套方管 7 mm。限位擋塊黏在 L1，擋銷距中心 58 mm。</p>
+    <p class="note">${spec.turnNote} 上木板 130×130×${state.deckT}，M4 沉頭鎖上框（十字），對角 Ø10 讓位。齒輪組用這片板上的 4 顆 M4 鎖上，可以整組拆下，孔對下板距前緣 55／135。L1 鎖下框（對角），十字 Ø12 讓套筒。L2 套方管 7 mm。限位擋塊黏在 L1，擋銷距中心 58 mm。</p>
     <p class="note">${state.yawType === 'bearing' ? '目前是軸承轉軸版，只是概念：兩顆 KFL08 相距約 90，夾 Ø8 鋼軸，裝在 70×70 盒裡。孔距 37 或 36 都待確認，沒有正式雷切檔。' : '目前是 3 寸轉盤版。'} 待確認：${spec.pending.join('；')}。</p>
     <p class="note">塔重 <b data-k="tower">${Math.round(spec.towerMass)}</b> g，整機 <b data-k="total">${Math.round(spec.totalMass)}</b> g（密度 ${state.density} g/cm³，上半部沿用 ${Math.round(spec.upper)} g）。4 m/s 塔頂撓度 <b data-k="defl">${spec.deflTop.toFixed(3)}</b> mm。葉尖離底板 ${cl.abovePlate.toFixed(0)} mm，扣彎曲預留後 ${cl.abovePlateAfter.toFixed(0)} mm。葉根後緣距齒輪前緣 ${cl.rootGap.toFixed(1)} mm。</p>
     <table class="compare"><thead><tr><th></th><th>目前</th><th>calcD.json 原假設（隔板 4、葉長 380、輪轂 480、塔頂 80）</th></tr></thead><tbody>
@@ -276,7 +276,7 @@ function paint2d() {
     <tr><td>上半部（齒輪、葉片、尾、轉盤下板）</td><td>${spec.upper}</td><td>沿用方案 D，不隨葉長增減</td></tr>
     <tr><td>合計</td><td>${Math.round(spec.totalMass)}</td><td>4 m/s 安全係數 ${sf4.toFixed(2)}</td></tr>
     </tbody></table>
-    <p class="note">雷切 5 mm：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、底板 ${state.base}、尾桿 30×5×350、限位擋塊。雷切 7 mm：上木板、L1、L2，各 130×130。另檔：齒輪下板加長到 270（教具老師修正，孔位待確認）。執行長的齒輪組原檔不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
+    <p class="note">雷切 5 mm：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、底板 ${state.base}、尾桿 30×5×350、限位擋塊。雷切 7 mm：上木板、L1、L2，各 130×130。另檔：齒輪下板加長到 270，並在偏航軸開 Ø20（教具老師修正，孔位待確認）。原齒輪組設計不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
 }
 
 function clearGroup(g) {
@@ -350,7 +350,7 @@ function addSchematic() {
   tt.position.z = spec.zT + TURN.thick / 2;
   put(tt, fixedG, new THREE.Vector3(0, 0, 0.6));
 
-  // 齒輪組示意（不修改執行長的設計，只標位置）
+  // 齒輪組只畫示意位置，不改原設計檔
   const gear = new THREE.Group();
   const plate = new THREE.Mesh(new THREE.BoxGeometry(GEAR_PLATE.len, GEAR_PLATE.wid, GEAR_PLATE.thick), new THREE.MeshStandardMaterial({color: 0x8aa0b2, transparent: true, opacity: 0.85}));
   plate.position.set(GEAR_FRONT_X - GEAR_PLATE.len / 2, 0, spec.zUpperTop + GEAR_PLATE.thick / 2);
@@ -443,7 +443,7 @@ document.querySelectorAll('[data-stl]').forEach(b => b.onclick = () => {
 });
 $('#gear-svg').onclick = () => {
   if (!spec) return;
-  save(new TextEncoder().encode(gearCorrectionSvg(spec)), '齒輪組下板_加長尾桿_教具老師修正.svg', 'image/svg+xml');
+  save(new TextEncoder().encode(gearCorrectionSvg(spec)), '齒輪組下板_穿線與加長尾桿_教具老師修正.svg', 'image/svg+xml');
 };
 
 applyAuto();

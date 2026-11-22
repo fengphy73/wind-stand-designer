@@ -46,7 +46,8 @@ ok(Math.abs(rightBottom - (spec.OUT / 2 - spec.T)) < 0.1 && Math.abs(leftBottom 
 const M = await Module();
 M.setup();
 const pr = buildPrinted(M, spec);
-ok(gearCorrectionSvg(spec).includes('教具老師修正') && gearCorrectionSvg(spec).includes('待確認'), '加長下板 SVG 有修正註記與待確認');
+const gearSvg = gearCorrectionSvg(spec);
+ok(gearSvg.includes('教具老師修正') && gearSvg.includes('待確認') && gearSvg.includes('Ø20') && !gearSvg.includes('執行長'), '修正檔有 Ø20 穿線、待確認，且不改原設計的稱呼');
 for (const k of ['hub']) {
   const e = edgeCheck(pr[k].solid);
   const stl = binarySTL(pr[k].solid);
