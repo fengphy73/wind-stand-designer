@@ -3,7 +3,7 @@ import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls.js';
 import Module from 'manifold-3d';
 import {
   VERSION, DEFAULTS, LIMITS, LABELS, compute, autoFit, referenceCalcD, round1, round2, round3,
-  HUB_R, ROTOR_X, YAW_LIMIT, CYL_R, CYL_H, TURN, GEAR_FRONT_X, GEAR_PLATE, GEAR_OD_80, BOOM,
+  HUB_R, ROTOR_X, YAW_LIMIT, CYL_R, CYL_H, TURN, GEAR_FRONT_X, GEAR_PLATE, GEAR_OD_80, BOOM, SHEET,
 } from './calc.mjs';
 import {laserSvgs, buildPrinted, buildLaserSolids, placePrinted, gearCorrectionSvg} from './make.mjs';
 import {meshArrays, binarySTL, makeZip, edgeCheck} from './mesh.mjs';
@@ -29,7 +29,7 @@ app.innerHTML = `
         <button id="fit" type="button">重設視角</button>
       </div>
       <div id="canvas"></div>
-      <p class="note">半透明圓柱是 Ø100 cm × 高 100 cm。木色是雷切件，藍色是加長輪轂。葉片與齒輪組是示意，齒輪底板不在本設計器修改。</p>
+      <p class="note">半透明圓柱是 Ø100 cm × 高 100 cm。木色是雷切件，綠色是加長的齒輪下板，灰藍是不加長的上板（示意）。葉片是示意。原齒輪組設計不改。</p>
     </section>
     <section class="panel card" id="view-ortho">
       <h2>正視、側視、俯視</h2>
@@ -53,13 +53,10 @@ app.innerHTML = `
       </div>
     </section>
     <section class="panel card" id="view-laser">
-      <h2>雷切排版（900×600 mm，實際尺寸）</h2>
+      <h2 id="laser-title">雷切排版（${SHEET.w}×${SHEET.h} mm，實際尺寸）</h2>
       <div id="laser"></div>
-      <div class="btns">
-        <button type="button" data-svg="0">下載第 1 張 SVG</button>
-        <button type="button" data-svg="1">下載第 2 張 SVG</button>
-      </div>
-      <p class="note">紅線切割、藍線與藍字雕刻。檔案以 mm 為單位，請照實際尺寸匯入，不要另外縮放。預覽為了塞進畫面才縮小，下載檔不會縮。</p>
+      <div class="btns" id="laser-btns"></div>
+      <p class="note">紅線切割、藍線與藍字雕刻。檔案以 mm 為單位，請照實際尺寸匯入，不要另外縮放。預覽為了塞進畫面才縮小，下載檔不會縮。一張排不下就自動分成多張。</p>
     </section>
     <section class="panel card" id="view-parts">
       <h2>零件與下載</h2>
@@ -87,10 +84,10 @@ const FIELDS = [
     ['shaftAbove', '主軸離底板頂面（25 倍）', 'mm', 1],
     ['shaftD', '主軸六角對角', 'mm', 0.1],
     ['yawType', '支架版本', '', 0],
+    ['gearPlateT', '齒輪底板每片厚（已量測）', 'mm', 0.5],
   ]],
-  ['待確認（齒輪底板，長 190 除外）', [
+  ['待確認（齒輪底板寬、孔位、內框）', [
     ['gearWid', '底板寬', 'mm', 1],
-    ['gearPlateT', '單層厚', 'mm', 0.5],
     ['gearEdge', '孔距長邊', 'mm', 1],
     ['gearHoleD', '孔徑', 'mm', 0.1],
     ['deckT', '轉盤木板厚', 'mm', 0.5],
@@ -244,6 +241,7 @@ function paint2d() {
     ${warns.map(w => `<div class="warn">${w}</div>`).join('') || '<div class="oknote">以轉盤頂面為準，葉尖、尾翼、底座角與最高點都在 Ø100 cm × 高 100 cm 圓柱內。</div>'}
     ${ground}
     <p class="note">主軸中心 <b data-k="shaft">${spec.params.hubZ.toFixed(1)}</b> mm，離底板頂面 ${(spec.params.hubZ - spec.T).toFixed(0)} mm。葉尖到底板頂面 <b data-k="tipBase">${spec.clearance.abovePlate.toFixed(1)}</b> mm（扣 40 mm 彎曲預留後 ${spec.clearance.abovePlateAfter.toFixed(1)} mm）。塔身（底板頂面到 L2 頂）<b>${spec.stack.towerAbove.toFixed(1)}</b> mm。若不算齒輪底板厚，約 ${spec.stack.approx397.toFixed(1)} mm。</p>
+    <p class="note">齒輪底板 ${spec.stack.gearLayers} 片，每片 ${spec.stack.gearEach} mm，總厚 ${spec.stack.gearTotal} mm（厚度已量測）。下板才往尾端加長 80 mm，全長 270、後段寬 50；上板長 190，不加長。尾桿厚 ${BOOM.thick} mm，底面貼在下板頂面（z ${spec.stack.zLowerTop.toFixed(1)}），頂面與上板齊平（z ${spec.stack.zGearTop.toFixed(1)}）。</p>
     <p class="note">${spec.turnNote} 上木板 130×130×${state.deckT}，M4 沉頭鎖上框（十字），對角 Ø10 讓位。齒輪組用這片板上的 4 顆 M4 鎖上，可以整組拆下，孔對下板距前緣 55／135。L1 鎖下框（對角），十字 Ø12 讓套筒。L2 套方管 7 mm。限位擋塊黏在 L1，擋銷距中心 58 mm。</p>
     <p class="note">${state.yawType === 'bearing' ? '目前是軸承轉軸版，只是概念：兩顆 KFL08 相距約 90，夾 Ø8 鋼軸，裝在 70×70 盒裡。孔距 37 或 36 都待確認，沒有正式雷切檔。' : '目前是 3 寸轉盤版。'} 待確認：${spec.pending.join('；')}。</p>
     <p class="note">塔重 <b data-k="tower">${Math.round(spec.towerMass)}</b> g，整機 <b data-k="total">${Math.round(spec.totalMass)}</b> g（密度 ${state.density} g/cm³，上半部沿用 ${Math.round(spec.upper)} g）。4 m/s 塔頂撓度 <b data-k="defl">${spec.deflTop.toFixed(3)}</b> mm。葉尖離底板 ${cl.abovePlate.toFixed(0)} mm，扣彎曲預留後 ${cl.abovePlateAfter.toFixed(0)} mm。葉根後緣距齒輪前緣 ${cl.rootGap.toFixed(1)} mm。</p>
@@ -268,15 +266,17 @@ function paint2d() {
   $('#steps').innerHTML = STEPS.map(s => `<li>${s}</li>`).join('');
 
   sheets = laserSvgs(spec);
-  $('#laser').innerHTML = sheets.sheets.map(sh => `<h3 style="margin:8px 0 4px;font-size:14px">${sh.title}</h3><div class="laser">${sh.svg.replace(/^<\?xml[^>]*>\s*/, '')}</div>`).join('')
-    + (sheets.overflow.length ? `<div class="warn">放不下：${sheets.overflow.join('、')}</div>` : '');
+  $('#laser-title').textContent = `雷切排版（板材 ${sheets.sheet.w}×${sheets.sheet.h} mm，共 ${sheets.count} 張）`;
+  $('#laser').innerHTML = sheets.sheets.map(sh => `<article class="sheet-block" data-sheet="${sh.id}"><h3 style="margin:8px 0 4px;font-size:14px">${sh.title}</h3><p class="note">${sh.partNames.join('、')}</p><div class="laser">${sh.svg.replace(/^<\?xml[^>]*>\s*/, '')}</div></article>`).join('')
+    + (sheets.overflow.length ? `<div class="warn">放不下：${sheets.overflow.join('、')}。零件外形沒有改。</div>` : '');
+  $('#laser-btns').innerHTML = sheets.sheets.map((sh, i) => `<button type="button" data-svg="${i}">下載第 ${sh.id} 張 SVG</button>`).join('');
 
   const woodRows = Object.entries(spec.wood).map(([k, v]) => `<tr><td>${k}</td><td>${Math.round(v)}</td><td>夾板估算</td></tr>`).join('');
   $('#bom').innerHTML = `<table><thead><tr><th>項目</th><th>估重 g</th><th>說明</th></tr></thead><tbody>${woodRows}
     <tr><td>上半部（齒輪、葉片、尾、轉盤下板）</td><td>${spec.upper}</td><td>沿用方案 D，不隨葉長增減</td></tr>
     <tr><td>合計</td><td>${Math.round(spec.totalMass)}</td><td>4 m/s 安全係數 ${sf4.toFixed(2)}</td></tr>
     </tbody></table>
-    <p class="note">雷切 5 mm：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、底板 ${state.base}、尾桿 30×5×350、限位擋塊。雷切 7 mm：上木板、L1、L2，各 130×130。另檔：齒輪下板加長到 270，並在偏航軸開 Ø20（教具老師修正，孔位待確認）。原齒輪組設計不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
+    <p class="note">雷切 5 mm：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、底板 ${state.base}、尾桿 30×5×350、限位擋塊、齒輪下板（5 mm，加長到 270）、導槽條 2。雷切 7 mm：上木板、L1、L2，各 130×130。另檔：齒輪下板加長與偏航軸 Ø20（教具老師修正；寬度、孔位、內框待確認）。上板不加長，原齒輪組設計不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
 }
 
 function clearGroup(g) {
@@ -300,7 +300,7 @@ function rebuild() {
   printed = buildPrinted(M, spec);
   lasers = buildLaserSolids(M, spec);
   const placed = placePrinted(M, spec, printed);
-  const colorOf = id => id.startsWith('hub') ? 0x2f6f9f : id.startsWith('dia') ? 0x8d6a3f : id.startsWith('gus') ? 0xb08968 : 0xc4a574;
+  const colorOf = id => id.startsWith('hub') ? 0x2f6f9f : id.startsWith('gear-lower') ? 0x6f8b78 : id.startsWith('dia') ? 0x8d6a3f : id.startsWith('gus') ? 0xb08968 : 0xc4a574;
   for (const s of lasers) {
     const mesh = solidMesh(s.solid, colorOf(s.id));
     const dir = new THREE.Vector3(0, 0, s.id.startsWith('top') ? 1 : s.id.startsWith('dia') ? 0.3 : 0);
@@ -352,8 +352,9 @@ function addSchematic() {
 
   // 齒輪組只畫示意位置，不改原設計檔
   const gear = new THREE.Group();
-  const plate = new THREE.Mesh(new THREE.BoxGeometry(GEAR_PLATE.len, GEAR_PLATE.wid, GEAR_PLATE.thick), new THREE.MeshStandardMaterial({color: 0x8aa0b2, transparent: true, opacity: 0.85}));
-  plate.position.set(GEAR_FRONT_X - GEAR_PLATE.len / 2, 0, spec.zUpperTop + GEAR_PLATE.thick / 2);
+  const plateT = p.gearPlateT;
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(GEAR_PLATE.len, p.gearWid, plateT), new THREE.MeshStandardMaterial({color: 0x8aa0b2, transparent: true, opacity: 0.72}));
+  plate.position.set(GEAR_FRONT_X - GEAR_PLATE.len / 2, 0, spec.stack.zLowerTop + plateT / 2);
   gear.add(plate);
   const shaft = new THREE.Mesh(new THREE.CylinderGeometry(p.shaftD / 2, p.shaftD / 2, 70, 16), new THREE.MeshStandardMaterial({color: 0x667, metalness: 0.6, roughness: 0.3}));
   shaft.rotation.z = Math.PI / 2;
@@ -431,11 +432,13 @@ function save(data, name, type) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1500);
 }
-document.querySelectorAll('[data-svg]').forEach(b => b.onclick = () => {
-  if (!sheets) return;
+$('#laser-btns').onclick = e => {
+  const b = e.target.closest('[data-svg]');
+  if (!b || !sheets) return;
   const sh = sheets.sheets[+b.dataset.svg];
-  save(new TextEncoder().encode(sh.svg), `底座支架_${sh.id}_900x600.svg`, 'image/svg+xml');
-});
+  if (!sh) return;
+  save(new TextEncoder().encode(sh.svg), `底座支架_${sh.id}_${SHEET.w}x${SHEET.h}.svg`, 'image/svg+xml');
+};
 document.querySelectorAll('[data-stl]').forEach(b => b.onclick = () => {
   if (!printed) return;
   const k = b.dataset.stl;

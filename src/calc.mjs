@@ -1,8 +1,8 @@
-// 風力發電底座支架設計器 v1.1 — 幾何與力學（瀏覽器與 Node 共用）
+// 風力發電底座支架設計器 v1.1.1 — 幾何與力學（瀏覽器與 Node 共用）
 // 計算方法沿用方案 D 的 calcD.py：夾板體積 × 密度、推力 Ct=0.8、傾倒力矩、懸臂撓度。
 // 座標：+X 迎風（風輪）、−X 順風（尾翼）、Z 向上、Y 向右。單位 mm、g、N。
 
-export const VERSION = '1.1.0';
+export const VERSION = '1.1.1';
 
 export const HUB_R = 35;
 export const OVERHANG = 177.5;          // 轉動面到偏航軸
@@ -14,9 +14,11 @@ export const SHAFT_STICKOUT = 37.5;
 export const SHAFT_25 = 80;
 export const SHAFT_30 = 85;
 export const TURN = {size: 71, thick: 8.8, bore: 35.5, holeD: 4.1, boltR: 41};
-// 齒輪底板：PDF 側視以 50 mm 框當比例尺，板長 189.4 mm，取 190；厚約 9.5 mm，取 10。
-// 寬度側視看不到。80 齒外徑 82，兩排 M4 需要左右邊，取 100。
-export const GEAR_PLATE = {len: 190, wid: 100, thick: 10};
+// 齒輪底板：PDF 側視以 50 mm 框當比例尺，板長 189.4 mm，取 190。
+// 厚度已實測：兩片各 5 mm，總厚 10 mm。下板才往尾端加長，上板不加長。
+// 寬度側視看不到。80 齒外徑 82，兩排 M4 需要左右邊，取 100（寬度仍待確認）。
+export const GEAR_LAYERS = 2;
+export const GEAR_PLATE = {len: 190, wid: 100, thick: 5};
 // 兩排各 6 孔，對準 PDF 上框 1（兩處）、框 2、框 3、發電機兩處。y=±38 離板邊 12 mm。
 export const GEAR_HOLE_X = [14, 44, 82, 122, 158, 178];
 export const GEAR_HOLE_Y = 38;
@@ -58,7 +60,7 @@ export const UPPER_30 = 666;             // 30 倍齒輪組重 5 g
 export const YAW_LIMIT = 170;
 export const CYL_R = 500;
 export const CYL_H = 1000;
-export const SHEET = {w: 900, h: 600};
+export const SHEET = {w: 600, h: 450};
 export const REF_HUB = 480;
 export const REF_BLADE = 380;
 
@@ -129,7 +131,7 @@ export function shaftH(gear) { return gear === '30' ? SHAFT_30 : SHAFT_25; }
 export function stackOf(p) {
   const T = p.thickness;
   const deckT = p.deckT;
-  const gearT = p.gearPlateT * 2;
+  const gearT = p.gearPlateT * GEAR_LAYERS;
   const sH = shaftH(p.gear);
   const above = p.shaftAbove + (p.gear === '30' ? SHAFT_30 - SHAFT_25 : 0);
   const zBaseTop = T;
@@ -141,8 +143,9 @@ export function stackOf(p) {
   const zL1Bot = round1(zTurnBot - deckT);
   const zL2Bot = round1(zL1Bot - deckT);
   return {
-    zBaseTop, zShaft, zGearTop, zGearBot, zUpperTop: zGearBot, zUpperBot,
+    zBaseTop, zShaft, zGearTop, zGearBot, zLowerTop: round1(zGearBot + p.gearPlateT), zUpperTop: zGearBot, zUpperBot,
     zTurnTop: zUpperBot, zTurnBot, zL1Top: zTurnBot, zL1Bot, zL2Top: zL1Bot, zL2Bot,
+    gearLayers: GEAR_LAYERS, gearEach: p.gearPlateT, gearTotal: gearT,
     towerAbove: round1(zL1Bot - zBaseTop),
     approx397: round1(above - sH - deckT - TURN.thick - deckT),
   };
@@ -405,7 +408,7 @@ export function compute(input = {}, opt = {}) {
     topTenon, stack: st, nutGap: gap,
     deck: {len: DECK, wid: DECK, thick: legacy ? T : p.deckT, yawFromFront: GEAR_FRONT_X, holes: 4, opening: {w: 8, h: 20}, turnDeg: TURN_DEG},
     turnNote, overhang: OVERHANG, pending: [
-      '齒輪底板寬 100、單層厚 5、孔距前緣 15/55/95/135/175、距長邊 10、孔徑 5、下板內框 180×60（長 190 是側視量到的）',
+      '齒輪底板寬 100、孔距前緣 15/55/95/135/175、距長邊 10、孔徑 5、下板內框 180×60（長 190 是側視量到的）',
       'KFL08 孔距 37 或 36、兩顆相距 90、軸承盒 70×70（只在軸承轉軸版）',
       'M4 沉頭錐坑要另外锪，雷切只開直孔與藍圈',
     ],

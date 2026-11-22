@@ -1,6 +1,6 @@
 {
   "name": "wind-stand-designer",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "風力發電底座支架設計器：KidWind 2026 亞洲聯賽方案 D（雷切方管塔＋3D 列印）",
   "private": true,
   "type": "module",

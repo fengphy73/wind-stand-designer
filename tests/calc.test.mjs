@@ -1,4 +1,4 @@
-import {compute, referenceCalcD, autoFit, round2, round3, VERSION, GEAR_HOLE_X} from '../src/calc.mjs';
+import {compute, referenceCalcD, autoFit, round2, round3, VERSION, GEAR_LAYERS} from '../src/calc.mjs';
 
 let fail = 0;
 const ok = (c, msg) => { console.log((c ? 'PASS ' : 'FAIL ') + msg); if (!c) fail++; };
@@ -37,7 +37,9 @@ ok(over.params.blade === 450, '葉長上限允許 450');
 const b590 = compute({base: 590});
 ok(b590.sf[4].SF0 > 1.5 && b590.sf[4].SF0 < d.sf[4].SF0, `底板 590 的 4 m/s 係數 ${b590.sf[4].SF0.toFixed(2)}，仍大於 1.5 且低於 600`);
 
-ok(VERSION === '1.1.0', '版本 ' + VERSION);
+ok(VERSION === '1.1.1', '版本 ' + VERSION);
+ok(GEAR_LAYERS === 2 && d.params.gearPlateT === 5 && d.stack.gearTotal === 10, `齒輪底板 ${d.stack.gearLayers} 片 × ${d.stack.gearEach} mm，總厚 ${d.stack.gearTotal}`);
+ok(!d.pending.join('').includes('單層厚') && !d.pending.join('').includes('厚 5') && d.pending.join('').includes('寬 100') && d.pending.join('').includes('內框'), '厚度已不是待確認，寬度與內框仍是');
 ok(d.deck.len === 130 && d.deck.thick === 7, `轉盤木板 ${d.deck.len}×${d.deck.thick}`);
 ok(d.turnNote.includes('方柱') && d.nutGap.rawGapPoint < 2 && d.nutGap.gapFlat > 3, `螺帽間隙原 ${d.nutGap.rawGapPoint.toFixed(1)}、調整後 ${d.nutGap.gapFlat.toFixed(1)}`);
 ok(d.overhang === 177.5 && d.deck.yawFromFront === 102.5, `懸伸 ${d.overhang}、偏航軸距前緣 ${d.deck.yawFromFront}`);
