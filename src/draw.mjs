@@ -18,9 +18,10 @@ export const STEPS = [
   '柱腳榫插入底板，套上柱腳套框，四片三角補強片榫入底板，全部塗膠。出線口不要被補強片擋住。',
   '塔頂下層套上柱頂榫，十字方向放入四顆 M4 螺帽，再蓋上上層板對齊膠合。',
   '3 寸轉盤相對方柱轉 45°，讓四個安裝孔落在十字方向，鎖上塔頂。',
-  '偏航平台板鎖上轉盤上板。限位環裝進塔頂中孔（擋片朝正後方），擋銷鎖在平台板底，先用手轉一圈確認約 ±170°。',
-  '尾桿座鎖上平台順風端，尾桿推入，尾翼（3 mm 塑膠瓦楞板）鎖在尾桿末端。',
-  '執行長的增速齒輪組用平台上四個 M4 孔鎖上，可以整組拆下。穿線若要過齒輪底板，請另存新檔在偏航軸開 Ø20，不要改原設計。',
+  '方管頂端套進下木板 L2（7 mm），四片壁板頂端當十字榫。下框螺帽放進 L2 六角孔，平邊朝向方柱。',
+  'L1 用 M4 盤頭由上往下鎖轉盤下框（對角四孔）。十字方向的 Ø12 是讓套筒從下面伸進去。',
+  '上木板用 M4 沉頭鎖轉盤上框（十字四孔）。對角 Ø10 是讓位。限位擋塊黏在 L1 頂面，擋銷鎖在上木板、距中心 58 mm。',
+  '齒輪組用上木板的 4 顆 M4 鎖上，可以整組拆下。孔對齒輪下板距前緣 55 與 135 的兩排（距長邊 10）。尾桿插在加長下板的導槽，不鎖在轉盤木板上。穿線若要過齒輪底板，用另存的修正檔，不要改原設計。',
   '加長輪轂套上主軸（孔徑請依實測），三片葉片鎖在輪轂圓盤上。導線從柱底出線口拉出，標明正負極。',
 ];
 
@@ -107,16 +108,16 @@ export function sideView(spec, yaw = 0) {
   d.poly([[spec.OUT / 2, spec.T], [go, spec.T], [spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
   d.poly([[-spec.OUT / 2, spec.T], [-go, spec.T], [-spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
   // 塔頂
-  const hs = spec.topSize / 2;
-  d.poly([[-hs, spec.colTop], [hs, spec.colTop], [hs, spec.zT], [-hs, spec.zT]], 'fill="#b9926a" stroke="#6a4b2b" stroke-width="1.2"');
-  // 轉盤
-  d.poly([[-TURN.size / 2, spec.zT], [TURN.size / 2, spec.zT], [TURN.size / 2, spec.zT + TURN.thick], [-TURN.size / 2, spec.zT + TURN.thick]], 'fill="#c5ccd3" stroke="#5c6b78" stroke-width="1.2"');
-  // 平台與齒輪（隨偏航在側視變短）
-  const platFront = 122.5 * yawC, platBack = (122.5 - 250) * yawC;
-  const zPlat = spec.platTop;
-  d.poly([[Math.min(platFront, platBack), zPlat], [Math.max(platFront, platBack), zPlat], [Math.max(platFront, platBack), zPlat + spec.T], [Math.min(platFront, platBack), zPlat + spec.T]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
-  const gf = GEAR_FRONT_X * yawC, gr = (GEAR_FRONT_X - GEAR_PLATE.len) * yawC;
-  d.poly([[Math.min(gf, gr), zPlat + spec.T], [Math.max(gf, gr), zPlat + spec.T], [Math.max(gf, gr), zPlat + spec.T + GEAR_PLATE.thick], [Math.min(gf, gr), zPlat + spec.T + GEAR_PLATE.thick]], 'fill="#8aa0b2" stroke="#3e5160" stroke-width="1.2"');
+  const slab = (x0, x1, z0, z1, fill) => d.poly([[x0 * yawC, z0], [x1 * yawC, z0], [x1 * yawC, z1], [x0 * yawC, z1]], `fill="${fill}" stroke="#6a4b2b" stroke-width="1.2"`);
+  if (spec.stack) {
+    slab(-65, 65, spec.stack.zL2Bot, spec.stack.zL2Top, '#b9926a');
+    slab(-65, 65, spec.stack.zL1Bot, spec.stack.zL1Top, '#c4a574');
+    d.poly([[-36, spec.stack.zTurnBot], [36, spec.stack.zTurnBot], [36, spec.stack.zTurnTop], [-36, spec.stack.zTurnTop]], 'fill="#c5ccd3" stroke="#5c6b78" stroke-width="1.2"');
+    slab(-65, 65, spec.stack.zUpperBot, spec.stack.zUpperTop, '#d7b98a');
+    slab(GEAR_FRONT_X - GEAR_PLATE.len - 80, GEAR_FRONT_X, spec.stack.zGearBot, spec.stack.zGearTop, '#8aa0b2');
+  }
+  const gf = GEAR_FRONT_X * yawC;
+  const zPlat = spec.stack ? spec.stack.zGearTop : spec.zUpperTop;
   d.line([rx, p.hubZ], [gf, p.hubZ], 'stroke="#3e5160" stroke-width="3"');
   d.circ(rx, p.hubZ, 8, 'fill="#2f6f9f"');
   // 葉片圓
@@ -125,7 +126,7 @@ export function sideView(spec, yaw = 0) {
   d.line([rx, p.hubZ - (p.blade + HUB_R)], [rx, p.hubZ + (p.blade + HUB_R)], `stroke="${over ? bad : '#1f7a4d'}" stroke-width="2" stroke-dasharray="6 4"`);
   // 尾翼
   const arm = -p.tailArm * yawC;
-  d.line([0, zPlat + spec.T], [arm, zPlat + spec.T * 2], 'stroke="#6a4b2b" stroke-width="4"');
+  d.line([0, zPlat + 2], [arm, zPlat + 2], 'stroke="#6a4b2b" stroke-width="4"');
   const finX = arm, finTop = spec.tailTop, finBot = spec.tailBot;
   d.poly([[finX - p.tailLen / 2 * yawC, finBot], [finX + p.tailLen / 2 * Math.max(yawC, 0.15), finBot], [finX + p.tailLen / 2 * Math.max(yawC, 0.15), finTop], [finX - p.tailLen / 2 * yawC, finTop]], 'fill="#e09a3e" fill-opacity="0.85" stroke="#8a5a12" stroke-width="1.2"');
 
@@ -157,8 +158,7 @@ export function frontView(spec) {
   d.poly([[-CYL_R, 0], [CYL_R, 0], [CYL_R, CYL_H], [-CYL_R, CYL_H]], `fill="${cyl}" fill-opacity="0.06" stroke="${cyl}" stroke-width="2" stroke-dasharray="10 6"`);
   d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, spec.T], [-p.base / 2, spec.T]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
   d.poly([[-spec.OUT / 2, spec.T], [spec.OUT / 2, spec.T], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
-  const hs = spec.topSize / 2;
-  d.poly([[-hs, spec.colTop], [hs, spec.colTop], [hs, spec.zT], [-hs, spec.zT]], 'fill="#b9926a" stroke="#6a4b2b" stroke-width="1.2"');
+  d.poly([[-65, spec.stack.zL2Bot], [65, spec.stack.zL2Bot], [65, spec.stack.zGearTop], [-65, spec.stack.zGearTop]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.9"');
   // 左右補強
   d.poly([[-spec.OUT / 2, spec.T], [-spec.OUT / 2 - GUSSET_LEG, spec.T], [-spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
   d.poly([[spec.OUT / 2, spec.T], [spec.OUT / 2 + GUSSET_LEG, spec.T], [spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
@@ -207,9 +207,9 @@ export function topView(spec, yaw = 0) {
   const t = TURN.size / 2;
   d.poly([[0, t], [t, 0], [0, -t], [-t, 0]], 'fill="none" stroke="#5c6b78" stroke-width="1.5"');
 
-  const plat = [[122.5, 55], [122.5, -55], [122.5 - 250, -55], [122.5 - 250, 55]].map(([x, y]) => rot(x, y));
-  d.poly(plat, 'fill="#d7b98a" fill-opacity="0.9" stroke="#6a4b2b" stroke-width="1.2"');
-  const gear = [[GEAR_FRONT_X, 50], [GEAR_FRONT_X, -50], [GEAR_FRONT_X - GEAR_PLATE.len, -50], [GEAR_FRONT_X - GEAR_PLATE.len, 50]].map(([x, y]) => rot(x, y));
+  const deck = [[65, 65], [65, -65], [-65, -65], [-65, 65]].map(([x, y]) => rot(x, y));
+  d.poly(deck, 'fill="#d7b98a" fill-opacity="0.9" stroke="#6a4b2b" stroke-width="1.2"');
+  const gear = [[GEAR_FRONT_X, 50], [GEAR_FRONT_X, -50], [GEAR_FRONT_X - 210, -50], [GEAR_FRONT_X - 210, -25], [GEAR_FRONT_X - 270, -25], [GEAR_FRONT_X - 270, 25], [GEAR_FRONT_X - 210, 25], [GEAR_FRONT_X - 210, 50]].map(([x, y]) => rot(x, y));
   d.poly(gear, 'fill="#8aa0b2" fill-opacity="0.85" stroke="#3e5160" stroke-width="1.2"');
   // 建議穿線
   const yawP = rot(0, 0);
@@ -292,12 +292,12 @@ export function explodeView(spec) {
     d.poly([[-spec.INN / 2, z0], [spec.INN / 2, z0], [spec.INN / 2, z0 + 8], [-spec.INN / 2, z0 + 8]], 'fill="#8d6a3f" stroke="#4a3420"');
     d.poly([[-spec.INN / 2, z0 + 28], [spec.INN / 2, z0 + 28], [spec.INN / 2, z0 + 36], [-spec.INN / 2, z0 + 36]], 'fill="#8d6a3f" stroke="#4a3420"');
   }, '3 上下隔板（中間中空）');
-  add(spec.T * 2, (d, z0) => d.poly([[-spec.topSize / 2, z0], [spec.topSize / 2, z0], [spec.topSize / 2, z0 + spec.T * 2], [-spec.topSize / 2, z0 + spec.T * 2]], 'fill="#b9926a" stroke="#6a4b2b"'), '4 塔頂板兩層');
-  add(TURN.thick, (d, z0) => d.poly([[-36, z0], [36, z0], [36, z0 + TURN.thick], [-36, z0 + TURN.thick]], 'fill="#c5ccd3" stroke="#5c6b78"'), '5 轉盤（轉 45°）');
-  add(spec.T + 16, (d, z0) => {
-    d.poly([[-40, z0], [80, z0], [80, z0 + spec.T], [-40, z0 + spec.T]], 'fill="#c4a574" stroke="#6a4b2b"');
-    d.poly([[-20, z0 + spec.T], [70, z0 + spec.T], [70, z0 + spec.T + 10], [-20, z0 + spec.T + 10]], 'fill="#8aa0b2" stroke="#3e5160"');
-  }, '6 平台與齒輪組');
+  add(spec.T, (d, z0) => d.poly([[-90, z0], [100, z0], [100, z0 + spec.T], [-90, z0 + spec.T]], 'fill="#b9926a" stroke="#6a4b2b"'), '4 下層全長板');
+  add(TURN.thick, (d, z0) => d.poly([[-36, z0], [36, z0], [36, z0 + TURN.thick], [-36, z0 + TURN.thick]], 'fill="#c5ccd3" stroke="#5c6b78"'), '5 轉盤（轉 45°，夾在兩層中間）');
+  add(spec.T + 14, (d, z0) => {
+    d.poly([[-90, z0], [100, z0], [100, z0 + spec.T], [-90, z0 + spec.T]], 'fill="#c4a574" stroke="#6a4b2b"');
+    d.poly([[-90, z0 + spec.T], [100, z0 + spec.T], [100, z0 + spec.T + 10], [-90, z0 + spec.T + 10]], 'fill="#8aa0b2" stroke="#3e5160"');
+  }, '6 上層板與齒輪組');
   add(30, (d, z0) => {
     d.circ(90, z0 + 15, 14, 'fill="#2f6f9f"');
     d.line([40, z0 + 15], [90, z0 + 15], 'stroke="#2f6f9f" stroke-width="4"');
