@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import Module from 'manifold-3d';
 import {compute, SHEET, GEAR_FRONT_X, GEAR_PLATE, BOOM} from '../src/calc.mjs';
-import {laserSvgs, layoutSheets, sheetBounds, wallOutline, buildPrinted, buildLaserSolids, limitAngle, gearCorrectionSvg} from '../src/make.mjs';
+import {laserSvgs, layoutSheets, sheetBounds, wallOutline, buildPrinted, buildLaserSolids, limitAngle, gearCorrectionSvg, BASE_MARGIN} from '../src/make.mjs';
 import {edgeCheck, binarySTL} from '../src/mesh.mjs';
 import {frontView, sideView, topView, sfChart} from '../src/draw.mjs';
 
@@ -9,8 +9,11 @@ let fail = 0;
 const ok = (c, msg) => { console.log((c ? 'PASS ' : 'FAIL ') + msg); if (!c) fail++; };
 const spec = compute({});
 const lay = layoutSheets(spec);
-ok(lay.sheets.length >= 2 && lay.overflow.length === 1 && lay.overflow[0].includes('底板'), `排版 ${lay.sheets.length} 張，放不下 ${lay.overflow.join('、')}`);
+ok(lay.overflow.length === 0 && !lay.sheets.some(s => s.items.some(i => i.part.id === 'base')), `600×450 共 ${lay.sheets.length} 張，不含底板`);
+ok(lay.base && Math.abs(lay.base.w - 500) < 0.1 && Math.abs(lay.base.h - 500) < 0.1, `底板外框 ${lay.base.w.toFixed(0)}×${lay.base.h.toFixed(0)}`);
 ok(lay.sheets.some(s => s.items.some(i => i.part.id === 'gear-lower')), '加長下板有排進板材');
+const gus = lay.sheets.flatMap(s => s.items).find(i => i.part.id === 'gus-0').part;
+ok(Math.abs(gus.h - (115 + 7)) < 0.2 || Math.abs(gus.w - (115 + 7)) < 0.2, `補強片含 7 mm 底板榫，外框 ${gus.w.toFixed(1)}×${gus.h.toFixed(1)}`);
 const names = lay.sheets.flatMap(s => s.items.map(i => i.part.name));
 ok(names.filter(n => n.startsWith('壁板')).length === 4, '壁板 4 片');
 ok(names.filter(n => n === '內隔板').length === 2, '隔板 2 片（另有備品）');
@@ -37,6 +40,8 @@ for (const sh of svg.sheets) {
   ok((sh.svg.match(/<path /g) || []).length > 8, `${sh.title} 的切割線是 path，不是純文字`);
   ok(!/scale\s*\(/i.test(sh.svg) && !sh.svg.includes('transform="matrix'), `${sh.title} 沒有另做縮放`);
 }
+const baseSvg = svg.base;
+ok(baseSvg.notice.includes('底板需另用大板切割（至少 500×500 加邊距）') && baseSvg.svg.includes(`width="${baseSvg.w}mm"`) && baseSvg.w === 500 + BASE_MARGIN * 2, `底板大板 ${baseSvg.w}×${baseSvg.h}，${baseSvg.notice}`);
 
 const wall = wallOutline(spec);
 const at = y => wall.filter(p => Math.abs(p[1] - y) < 0.15);

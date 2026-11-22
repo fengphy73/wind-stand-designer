@@ -75,9 +75,10 @@ export function diaphragmPoly(spec) {
 }
 
 export function gussetPoly(spec) {
-  const T = spec.T, L = GUSSET_LEG, H = GUSSET_H, tw = GUSSET_TENON;
+  const L = GUSSET_LEG, H = GUSSET_H, tw = GUSSET_TENON;
+  const tab = spec.baseT;
   const x0 = (L - tw) / 2, x1 = x0 + tw;
-  return ccw([[0, 0], [x0, 0], [x0, -T], [x1, -T], [x1, 0], [L, 0], [0, H]]);
+  return ccw([[0, 0], [x0, 0], [x0, -tab], [x1, -tab], [x1, 0], [L, 0], [0, H]]);
 }
 
 export function hex(cx, cy, af, rotDeg = 0) {
@@ -160,7 +161,8 @@ export function laserParts(spec) {
     engrave.push({kind: 'rect', x: inner + m, y: half - m - 28, w: half - inner - 2 * m, h: 28});
   }
   engrave.push({kind: 'cross', x: 0, y: 0, s: 12});
-  push(part('base', '底板', 1, basePts, baseHoles, engrave, '底板'));
+  engrave.push({kind: 'text', text: `底板 ${spec.params.base}×${spec.params.baseT} mm`, x: 0, y: 28});
+  push(part('base', `底板 ${spec.params.base}×${spec.params.base}×${spec.params.baseT}`, 1, basePts, baseHoles, engrave, '底板'));
 
   const wOut = wallOutline(spec);
   for (let i = 0; i < 2; i++) push(part('wall-slot-' + i, '壁板（隔板槽）', 1, wOut, wallHoles(spec, 'slot'), [{kind: 'text', text: '上·槽', x: 0, y: spec.wallLen - 14}], '壁板槽'));
@@ -304,8 +306,12 @@ function part(id, name, count, outline, holes, eng, short) {
   return {id, name, count, short, outline, holes, eng, ...b};
 }
 
+export const BASE_MARGIN = 10;
+
 export function layoutSheets(spec) {
   const parts = laserParts(spec);
+  const base = parts.find(p => p.id === 'base');
+  const pack = parts.filter(p => p.id !== 'base');
   const gap = 3.5;
   const margin = 2;
   const limitW = SHEET.w - margin;
@@ -341,7 +347,7 @@ export function layoutSheets(spec) {
     return false;
   }
 
-  const ordered = [...parts].sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.h - a.h);
+  const ordered = [...pack].sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.h - a.h);
   for (const part of ordered) {
     const orients = orientations(part);
     if (!orients.length) {
@@ -374,7 +380,7 @@ export function layoutSheets(spec) {
     sheet.util = used / area;
     sheet.partNames = sheet.items.map(it => it.part.name);
   }
-  return {sheets, overflow, parts, sheet: {w: SHEET.w, h: SHEET.h}};
+  return {sheets, overflow, parts, base, sheet: {w: SHEET.w, h: SHEET.h}};
 }
 
 function mapLocal(item, p) {
@@ -415,35 +421,55 @@ function escapeXml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function renderSheet(items, w, h, title, desc) {
+  let cut = '', eng = '';
+  for (const it of items) {
+    const g = sheetItemSvg(it);
+    cut += g.cut;
+    eng += g.eng;
+  }
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${w}mm" height="${h}mm" viewBox="0 0 ${w} ${h}">
+<title>${escapeXml(title)}</title>
+<desc>${escapeXml(desc)}</desc>
+<g id="cut" fill="none" stroke="#ff0000" stroke-width="0.15" stroke-linejoin="round">${cut}</g>
+<g id="engrave" fill="none" stroke="#0000ff" stroke-width="0.12">${eng}</g>
+</svg>`;
+  return svg;
+}
+
 export function laserSvgs(spec) {
   const lay = layoutSheets(spec);
-  const {sheets, overflow} = lay;
+  const {sheets, overflow, base} = lay;
   const n = sheets.length;
+  const pack = sheets.map(sh => {
+    const pct = Math.round(sh.util * 1000) / 10;
+    const title = `第 ${sh.id} 張／共 ${n} 張　${SHEET.w}×${SHEET.h} mm　零件 ${sh.items.length}　外框利用率 ${pct}%`;
+    const desc = `風力發電底座支架設計器 v${VERSION} ${title}。1 單位 = 1 mm，請以實際尺寸匯入，不要為了軟體比例另做縮放。紅 #ff0000 切割，藍 #0000ff 雕刻。原點在左上角，Y 向下。`;
+    return {
+      id: sh.id, title, svg: renderSheet(sh.items, SHEET.w, SHEET.h, title, desc), util: sh.util, w: SHEET.w, h: SHEET.h,
+      partNames: sh.partNames,
+      items: sh.items.map(it => ({id: it.part.id, name: it.part.name, w: it.part.w, h: it.part.h, rot: it.rot, placeX: it.placeX, placeY: it.placeY})),
+    };
+  });
+  const edge = Math.round(base.w);
+  const notice = `底板需另用大板切割（至少 ${edge}×${edge} 加邊距）`;
+  const bw = Math.ceil(base.w + BASE_MARGIN * 2);
+  const bh = Math.ceil(base.h + BASE_MARGIN * 2);
+  const baseUtil = (base.w * base.h) / (bw * bh);
+  const baseTitle = `底板大板　${bw}×${bh} mm　零件 1　外框利用率 ${Math.round(baseUtil * 1000) / 10}%`;
+  const baseItem = {part: base, rot: 0, placeX: BASE_MARGIN, placeY: BASE_MARGIN};
+  const baseSheet = {
+    id: 'base', title: baseTitle, notice, w: bw, h: bh, util: baseUtil,
+    svg: renderSheet([baseItem], bw, bh, baseTitle, `${notice}。風力發電底座支架設計器 v${VERSION}。圖紙每邊留 ${BASE_MARGIN} mm。1 單位 = 1 mm，請以實際尺寸匯入。紅 #ff0000 切割，藍 #0000ff 雕刻。`),
+    partNames: [base.name],
+  };
   return {
     overflow,
     count: n,
     sheet: {w: SHEET.w, h: SHEET.h},
-    sheets: sheets.map(sh => {
-      const pct = Math.round(sh.util * 1000) / 10;
-      const title = `第 ${sh.id} 張／共 ${n} 張　${SHEET.w}×${SHEET.h} mm　零件 ${sh.items.length}　外框利用率 ${pct}%`;
-      let cut = '', eng = '';
-      for (const it of sh.items) {
-        const g = sheetItemSvg(it);
-        cut += g.cut;
-        eng += g.eng;
-      }
-      const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${SHEET.w}mm" height="${SHEET.h}mm" viewBox="0 0 ${SHEET.w} ${SHEET.h}">
-<title>${escapeXml(title)}</title>
-<desc>風力發電底座支架設計器 v${VERSION} ${escapeXml(title)}。1 單位 = 1 mm，請以實際尺寸匯入，不要為了軟體比例另做縮放。紅 #ff0000 切割，藍 #0000ff 雕刻。原點在左上角，Y 向下。</desc>
-<g id="cut" fill="none" stroke="#ff0000" stroke-width="0.15" stroke-linejoin="round">${cut}</g>
-<g id="engrave" fill="none" stroke="#0000ff" stroke-width="0.12">${eng}</g>
-</svg>`;
-      return {
-        id: sh.id, title, svg, util: sh.util, partNames: sh.partNames,
-        items: sh.items.map(it => ({id: it.part.id, name: it.part.name, w: it.part.w, h: it.part.h, rot: it.rot, placeX: it.placeX, placeY: it.placeY})),
-      };
-    }),
+    sheets: pack,
+    base: baseSheet,
   };
 }
 
@@ -580,7 +606,8 @@ export function buildLaserSolids(M, spec) {
   ];
 
   // 底板 z=0..T，輪廓在 XY（本地 y 就是世界 Y）
-  add('base', [byId.base.outline, ...byId.base.holes], T, mat4([1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 0]), '底板');
+  const baseT = spec.baseT;
+  add('base', [byId.base.outline, ...byId.base.holes], baseT, mat4([1, 0, 0, 0, 1, 0, 0, 0, 1], [0, 0, 0]), '底板');
 
   // 壁板：輪廓 (v→本地 x，高度→本地 y)，擠出厚度後立到四面。
   // 未旋轉時本地 x→世界 X、本地 y→世界 Z、厚度→世界 +Y，外側面在 +Y。
@@ -613,7 +640,7 @@ export function buildLaserSolids(M, spec) {
   // 套框
   {
     const src = byId.collar;
-    const solid = extrude(M, [src.outline, ...src.holes], T).translate([0, 0, T]);
+    const solid = extrude(M, [src.outline, ...src.holes], T).translate([0, 0, baseT]);
     solids.push({id: 'collar', name: '柱腳套框', solid});
   }
 
@@ -631,7 +658,7 @@ export function buildLaserSolids(M, spec) {
       0, 1, 0, 0,   // local x → world Y
       0, 0, 1, 0,   // local y → world Z
       1, 0, 0, 0,   // local z → world X
-      -T / 2, spec.OUT / 2, T, 1,
+      -T / 2, spec.OUT / 2, baseT, 1,
     ]);
     for (let k = 0; k < 4; k++) {
       const c = Math.cos(k * Math.PI / 2), s = Math.sin(k * Math.PI / 2);

@@ -69,14 +69,15 @@ export const DEFAULTS = {
   slotFit: 5.2,
   tube: 50,
   diaphragms: 2,
-  base: 600,
+  base: 500,
+  baseT: 7,
   blade: 415,
   gear: '25',
   tailLen: 220,
   tailH: 125,
   tailArm: 360,
   density: 0.65,
-  hubZ: 505,
+  hubZ: 507,
   shaftD: 7,
   yawType: 'turntable',
   deckT: 7,
@@ -95,6 +96,7 @@ export const LIMITS = {
   tube: [40, 80],
   diaphragms: [0, 8],
   base: [400, 600],
+  baseT: [4, 12],
   blade: [200, 450],
   tailLen: [80, 340],
   tailH: [40, 220],
@@ -114,7 +116,7 @@ export const LIMITS = {
 
 export const LABELS = {
   thickness: '板厚', slotFit: '榫孔寬', tube: '方管邊長', diaphragms: '隔板片數',
-  base: '底板邊長', blade: '葉片長度', gear: '齒輪組', tailLen: '尾翼長度', tailH: '尾翼高度',
+  base: '底板邊長', baseT: '底板厚度', blade: '葉片長度', gear: '齒輪組', tailLen: '尾翼長度', tailH: '尾翼高度',
   tailArm: '尾翼中心距偏航軸', density: '夾板密度', hubZ: '輪轂中心高', shaftD: '主軸六角對角',
   deckT: '轉盤木板厚', shaftAbove: '主軸離底板頂面', gearWid: '齒輪底板寬',
   gearPlateT: '齒輪底板單層厚', gearEdge: '齒輪孔距長邊', gearHoleD: '齒輪孔徑',
@@ -129,12 +131,11 @@ export function shaftH(gear) { return gear === '30' ? SHAFT_30 : SHAFT_25; }
 
 /** 轉盤版疊層。主軸離底板頂面 shaftAbove（30 倍再加 5）。往下扣齒輪板、上木板、轉盤、L1、L2。 */
 export function stackOf(p) {
-  const T = p.thickness;
   const deckT = p.deckT;
   const gearT = p.gearPlateT * GEAR_LAYERS;
   const sH = shaftH(p.gear);
   const above = p.shaftAbove + (p.gear === '30' ? SHAFT_30 - SHAFT_25 : 0);
-  const zBaseTop = T;
+  const zBaseTop = p.baseT;
   const zShaft = round1(zBaseTop + above);
   const zGearTop = round1(zShaft - sH);
   const zGearBot = round1(zGearTop - gearT);
@@ -157,7 +158,7 @@ export function autoFit(input = {}) {
   const {params: p} = sanitize(src);
   const st = stackOf(p);
   const notes = [];
-  const tipMin = p.thickness + BEND_TIP + 10;
+  const tipMin = p.baseT + BEND_TIP + 10;
   let byTip = Math.floor((st.zShaft - tipMin - HUB_R) / 5) * 5;
   const maxRb = Math.sqrt(CYL_R * CYL_R - OVERHANG * OVERHANG);
   let byCyl = Math.floor((maxRb - HUB_R) / 5) * 5;
@@ -206,6 +207,7 @@ export function sanitize(input = {}) {
   p.slotFit = round1(p.slotFit);
   p.tube = round1(p.tube);
   p.base = round1(p.base);
+  p.baseT = round1(p.baseT);
   p.blade = round1(p.blade);
   p.hubZ = round1(p.hubZ);
   p.density = Math.round(p.density * 1000) / 1000;
@@ -243,6 +245,7 @@ export function compute(input = {}, opt = {}) {
   const INN = OUT - 2 * T;
   const sH = shaftH(p.gear);
   const legacy = !!opt.legacy;
+  const baseTop = legacy ? T : p.baseT;
   // legacy 維持 calcD 的塔頂，用來對照 json。v1.1 轉盤版由主軸離底板頂面往下扣。
   const st = legacy ? null : stackOf(p);
   if (!legacy) p.hubZ = st.zShaft;
@@ -254,7 +257,7 @@ export function compute(input = {}, opt = {}) {
   const topTenon = legacy ? T : p.deckT;
   const Lcol = legacy ? colTop : st.zL2Bot;
   const wallLen = legacy ? round1(colTop + T) : colTop;
-  const body0 = T;
+  const body0 = baseTop;
   const body1 = legacy ? colTop : round1(colTop - topTenon);
   const bodyLen = round1(body1 - body0);
   let nSeg = Math.max(4, Math.round(bodyLen / 25.4));
@@ -264,9 +267,9 @@ export function compute(input = {}, opt = {}) {
   const holeR = Math.min(DIA_HOLE / 2, INN / 2 - 3);
 
   // 隔板：上下兩端各一片為預設；多于 2 片時中間均布。下端避開出線口。
-  const wireBot = round1(T + 2);
+  const wireBot = round1(baseTop + 2);
   const wireTop = round1(wireBot + WIRE.h);
-  const zLo = round1(Math.max(wireTop + T / 2 + 3, T + 18));
+  const zLo = round1(Math.max(wireTop + T / 2 + 3, baseTop + 18));
   const zHi = round1(body1 - 16);
   const diaZ = [];
   const nDia = p.diaphragms;
@@ -289,7 +292,7 @@ export function compute(input = {}, opt = {}) {
   const wood = {
     '柱壁板': cm3((OUT * OUT - INN * INN) * Lcol) * rho,
     '內隔板': nDia * cm3((INN * INN - Math.PI * holeR * holeR) * T) * rho,
-    '底板': cm3(p.base * p.base * T) * 0.70 * rho,
+    '底板': cm3(p.base * p.base * baseTop) * 0.70 * rho,
     '三角補強片': 4 * cm3((GUSSET_LEG * GUSSET_H / 2) * T) * rho,
     '柱腳套框': cm3((COLLAR * COLLAR - (OUT + 0.4) * (OUT + 0.4)) * T) * rho,
     '木工膠': GLUE_G,
@@ -319,7 +322,7 @@ export function compute(input = {}, opt = {}) {
 
   const I = (OUT ** 4 - INN ** 4) / 12;
   const EI = E_MPA * I;                         // N·mm²
-  const Lcant = legacy ? zT - T : st.zL2Top - T;
+  const Lcant = legacy ? zT - T : st.zL2Top - st.zBaseTop;
   const F4 = thrust(4);
   const arm = p.hubZ - (legacy ? zT : st.zL2Top);
   const M4 = F4 * arm;
@@ -353,12 +356,12 @@ export function compute(input = {}, opt = {}) {
   // 間隙：轉動面整圈取樣，結構用包絡半徑（補強片沿徑向線形外伸）
   function reach(z) {
     if (z < 0 || z > (legacy ? zT : zGearTop)) return 0;
-    if (z <= T) return squareReach(p.base / 2, Math.PI / 4); // 底板對角，取最大
+    if (z <= baseTop) return squareReach(p.base / 2, Math.PI / 4); // 底板對角，取最大
     if (!legacy && z >= st.zL2Bot) return Math.hypot(GEAR_FRONT_X, p.gearWid / 2);
     if (legacy && z >= zT - 2 * T) return squareReach(topSize / 2, Math.PI / 4);
     const col = squareReach(OUT / 2, Math.PI / 4);
-    if (z >= T + GUSSET_H) return col;
-    const t = (T + GUSSET_H - z) / GUSSET_H;
+    if (z >= baseTop + GUSSET_H) return col;
+    const t = (baseTop + GUSSET_H - z) / GUSSET_H;
     return Math.max(col, OUT / 2 + GUSSET_LEG * t);
   }
   let hMin = Infinity, hAt = null, vMin = Infinity;
@@ -378,13 +381,13 @@ export function compute(input = {}, opt = {}) {
       const gap = horiz - rch;
       if (gap < hMin) { hMin = gap; hAt = {z, s, a, horiz, rch}; }
       const zEff = z - bend * Math.max(0, -Math.cos(ar)); // 下半圈下垂
-      if (horiz < p.base / 2 && zEff > T) vMin = Math.min(vMin, zEff - T);
+      if (horiz < p.base / 2 && zEff > baseTop) vMin = Math.min(vMin, zEff - baseTop);
     }
   }
   const clearance = {
     tipZ, tipZBend,
-    abovePlate: tipZ - T,
-    abovePlateAfter: tipZBend - T,
+    abovePlate: tipZ - baseTop,
+    abovePlateAfter: tipZBend - baseTop,
     horizontal: hMin,
     horizontalAt: hAt,
     verticalMin: vMin,
@@ -399,7 +402,7 @@ export function compute(input = {}, opt = {}) {
   const turnNote = legacy ? '' : `上框孔在十字、下框孔在對角，兩框錯 45°。六角孔若尖角朝方柱，木料只剩約 ${gap.rawGapPoint.toFixed(1)} mm。已把方管頂四角倒 2 mm，六角孔平邊朝向方柱，木料約 ${gap.gapFlat.toFixed(1)} mm。`;
 
   return {
-    params: p, warnings, T, OUT, INN, sH, zT, colTop, Lcol, wallLen, body0, body1, bodyLen,
+    params: p, warnings, T, baseT: baseTop, OUT, INN, sH, zT, colTop, Lcol, wallLen, body0, body1, bodyLen,
     nSeg, pitch, topSize, holeR, diaZ, wireBot, wireTop, platTop, gearTop, tailTop, tailBot,
     gussetOuter, wood, towerMass, upper, totalMass, area, thrust, sfAt, sf, I, EI, Lcant,
     deflTop, deflHub, F4, env, clearance, fit25, fit30, tower25, tower30,

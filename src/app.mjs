@@ -77,6 +77,7 @@ const FIELDS = [
     ['tube', '方管邊長', 'mm', 1],
     ['diaphragms', '隔板片數', '片', 1],
     ['base', '底板邊長', 'mm', 1],
+    ['baseT', '底板厚度', 'mm', 0.5],
   ]],
   ['風輪與齒輪', [
     ['gear', '齒輪組', '', 0],
@@ -158,7 +159,7 @@ $('#refbtn').onclick = () => {
   syncForm(); schedule();
 };
 function applyAuto() {
-  const fit = autoFit(state.thickness);
+  const fit = autoFit(state);
   state.blade = fit.blade;
   state.hubZ = fit.hubZ;
   syncForm();
@@ -207,7 +208,7 @@ function schedule() { clearTimeout(timer); timer = setTimeout(rebuild, 60); }
 
 function paint2d() {
   spec = compute(state);
-  const fit = autoFit(state.thickness);
+  const fit = autoFit(state);
   $('#autonote').textContent = (autoOn ? '目前依自動葉長。' : '葉長或輪轂高已手動改過。') + fit.notes.join('');
   const env = spec.env, cl = spec.clearance;
   const tipCls = env.tipOver > 0 ? 'bad' : 'ok';
@@ -240,7 +241,8 @@ function paint2d() {
     <div class="sf" style="margin-top:8px">${rows}</div>
     ${warns.map(w => `<div class="warn">${w}</div>`).join('') || '<div class="oknote">以轉盤頂面為準，葉尖、尾翼、底座角與最高點都在 Ø100 cm × 高 100 cm 圓柱內。</div>'}
     ${ground}
-    <p class="note">主軸中心 <b data-k="shaft">${spec.params.hubZ.toFixed(1)}</b> mm，離底板頂面 ${(spec.params.hubZ - spec.T).toFixed(0)} mm。葉尖到底板頂面 <b data-k="tipBase">${spec.clearance.abovePlate.toFixed(1)}</b> mm（扣 40 mm 彎曲預留後 ${spec.clearance.abovePlateAfter.toFixed(1)} mm）。塔身（底板頂面到 L2 頂）<b>${spec.stack.towerAbove.toFixed(1)}</b> mm。若不算齒輪底板厚，約 ${spec.stack.approx397.toFixed(1)} mm。</p>
+    <p class="note">主軸中心 <b data-k="shaft">${spec.params.hubZ.toFixed(1)}</b> mm，離底板頂面 ${(spec.params.hubZ - spec.baseT).toFixed(0)} mm。葉尖到底板頂面 <b data-k="tipBase">${spec.clearance.abovePlate.toFixed(1)}</b> mm（扣 40 mm 彎曲預留後 ${spec.clearance.abovePlateAfter.toFixed(1)} mm）。塔身（底板頂面到 L2 頂）<b>${spec.stack.towerAbove.toFixed(1)}</b> mm。若不算齒輪底板厚，約 ${spec.stack.approx397.toFixed(1)} mm。</p>
+    <p class="note">底板 ${state.base}×${state.base}×${state.baseT}。壁板與三角補強片仍是 ${state.thickness} mm，插進底板的榫長 ${state.baseT} mm，槽寬 ${state.slotFit} mm。</p>
     <p class="note">齒輪底板 ${spec.stack.gearLayers} 片，每片 ${spec.stack.gearEach} mm，總厚 ${spec.stack.gearTotal} mm（厚度已量測）。下板才往尾端加長 80 mm，全長 270、後段寬 50；上板長 190，不加長。尾桿厚 ${BOOM.thick} mm，底面貼在下板頂面（z ${spec.stack.zLowerTop.toFixed(1)}），頂面與上板齊平（z ${spec.stack.zGearTop.toFixed(1)}）。</p>
     <p class="note">${spec.turnNote} 上木板 130×130×${state.deckT}，M4 沉頭鎖上框（十字），對角 Ø10 讓位。齒輪組用這片板上的 4 顆 M4 鎖上，可以整組拆下，孔對下板距前緣 55／135。L1 鎖下框（對角），十字 Ø12 讓套筒。L2 套方管 7 mm。限位擋塊黏在 L1，擋銷距中心 58 mm。</p>
     <p class="note">${state.yawType === 'bearing' ? '目前是軸承轉軸版，只是概念：兩顆 KFL08 相距約 90，夾 Ø8 鋼軸，裝在 70×70 盒裡。孔距 37 或 36 都待確認，沒有正式雷切檔。' : '目前是 3 寸轉盤版。'} 待確認：${spec.pending.join('；')}。</p>
@@ -267,16 +269,19 @@ function paint2d() {
 
   sheets = laserSvgs(spec);
   $('#laser-title').textContent = `雷切排版（板材 ${sheets.sheet.w}×${sheets.sheet.h} mm，共 ${sheets.count} 張）`;
-  $('#laser').innerHTML = sheets.sheets.map(sh => `<article class="sheet-block" data-sheet="${sh.id}"><h3 style="margin:8px 0 4px;font-size:14px">${sh.title}</h3><p class="note">${sh.partNames.join('、')}</p><div class="laser">${sh.svg.replace(/^<\?xml[^>]*>\s*/, '')}</div></article>`).join('')
+  const bsh = sheets.base;
+  $('#laser').innerHTML = `<article class="sheet-block" data-sheet="base"><div class="warn">${bsh.notice}</div><h3 style="margin:8px 0 4px;font-size:14px">${bsh.title}</h3><p class="note">${bsh.partNames.join('、')}</p><div class="laser">${bsh.svg.replace(/^<\?xml[^>]*>\s*/, '')}</div></article>`
+    + sheets.sheets.map(sh => `<article class="sheet-block" data-sheet="${sh.id}"><h3 style="margin:8px 0 4px;font-size:14px">${sh.title}</h3><p class="note">${sh.partNames.join('、')}</p><div class="laser">${sh.svg.replace(/^<\?xml[^>]*>\s*/, '')}</div></article>`).join('')
     + (sheets.overflow.length ? `<div class="warn">放不下：${sheets.overflow.join('、')}。零件外形沒有改。</div>` : '');
-  $('#laser-btns').innerHTML = sheets.sheets.map((sh, i) => `<button type="button" data-svg="${i}">下載第 ${sh.id} 張 SVG</button>`).join('');
+  $('#laser-btns').innerHTML = `<button type="button" data-svg="base">下載底板大板 SVG</button>`
+    + sheets.sheets.map((sh, i) => `<button type="button" data-svg="${i}">下載第 ${sh.id} 張 SVG</button>`).join('');
 
   const woodRows = Object.entries(spec.wood).map(([k, v]) => `<tr><td>${k}</td><td>${Math.round(v)}</td><td>夾板估算</td></tr>`).join('');
   $('#bom').innerHTML = `<table><thead><tr><th>項目</th><th>估重 g</th><th>說明</th></tr></thead><tbody>${woodRows}
     <tr><td>上半部（齒輪、葉片、尾、轉盤下板）</td><td>${spec.upper}</td><td>沿用方案 D，不隨葉長增減</td></tr>
     <tr><td>合計</td><td>${Math.round(spec.totalMass)}</td><td>4 m/s 安全係數 ${sf4.toFixed(2)}</td></tr>
     </tbody></table>
-    <p class="note">雷切 5 mm：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、底板 ${state.base}、尾桿 30×5×350、限位擋塊、齒輪下板（5 mm，加長到 270）、導槽條 2。雷切 7 mm：上木板、L1、L2，各 130×130。另檔：齒輪下板加長與偏航軸 Ø20（教具老師修正；寬度、孔位、內框待確認）。上板不加長，原齒輪組設計不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
+    <p class="note">雷切 ${state.thickness} mm：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、尾桿 30×5×350、限位擋塊、齒輪下板（5 mm，加長到 270）、導槽條 2。底板 ${state.base}×${state.base}×${state.baseT} 另用大板。雷切 7 mm：上木板、L1、L2，各 130×130。另檔：齒輪下板加長與偏航軸 Ø20（教具老師修正；寬度、孔位、內框待確認）。上板不加長，原齒輪組設計不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
 }
 
 function clearGroup(g) {
@@ -435,9 +440,13 @@ function save(data, name, type) {
 $('#laser-btns').onclick = e => {
   const b = e.target.closest('[data-svg]');
   if (!b || !sheets) return;
-  const sh = sheets.sheets[+b.dataset.svg];
+  const key = b.dataset.svg;
+  const sh = key === 'base' ? sheets.base : sheets.sheets[+key];
   if (!sh) return;
-  save(new TextEncoder().encode(sh.svg), `底座支架_${sh.id}_${SHEET.w}x${SHEET.h}.svg`, 'image/svg+xml');
+  const name = key === 'base'
+    ? `底板_${spec.params.base}x${spec.params.base}x${spec.params.baseT}_大板${sh.w}x${sh.h}.svg`
+    : `底座支架_${sh.id}_${SHEET.w}x${SHEET.h}.svg`;
+  save(new TextEncoder().encode(sh.svg), name, 'image/svg+xml');
 };
 document.querySelectorAll('[data-stl]').forEach(b => b.onclick = () => {
   if (!printed) return;

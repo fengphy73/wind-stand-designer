@@ -97,16 +97,17 @@ export function sideView(spec, yaw = 0) {
   // 側視只畫偏航角在 XZ 的投影：迎風距離乘 cos
   const rx = ROTOR_X * yawC;
   // 底板
-  d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, spec.T], [-p.base / 2, spec.T]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
+  const zB = spec.baseT;
+  d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, zB], [-p.base / 2, zB]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
   // 柱
-  d.poly([[-spec.OUT / 2, spec.T], [spec.OUT / 2, spec.T], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
-  d.poly([[-spec.INN / 2, spec.T], [spec.INN / 2, spec.T], [spec.INN / 2, spec.colTop], [-spec.INN / 2, spec.colTop]], 'fill="#f6f3ec" stroke="none"');
+  d.poly([[-spec.OUT / 2, zB], [spec.OUT / 2, zB], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
+  d.poly([[-spec.INN / 2, zB], [spec.INN / 2, zB], [spec.INN / 2, spec.colTop], [-spec.INN / 2, spec.colTop]], 'fill="#f6f3ec" stroke="none"');
   // 隔板
   for (const z of spec.diaZ) d.line([-spec.INN / 2, z], [spec.INN / 2, z], 'stroke="#6a4b2b" stroke-width="3"');
   // 補強（側視看到前後兩片的外廓）
   const go = spec.OUT / 2 + GUSSET_LEG;
-  d.poly([[spec.OUT / 2, spec.T], [go, spec.T], [spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
-  d.poly([[-spec.OUT / 2, spec.T], [-go, spec.T], [-spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
+  d.poly([[spec.OUT / 2, zB], [go, zB], [spec.OUT / 2, zB + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
+  d.poly([[-spec.OUT / 2, zB], [-go, zB], [-spec.OUT / 2, zB + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.85"');
   // 塔頂
   const slab = (x0, x1, z0, z1, fill) => d.poly([[x0 * yawC, z0], [x1 * yawC, z0], [x1 * yawC, z1], [x0 * yawC, z1]], `fill="${fill}" stroke="#6a4b2b" stroke-width="1.2"`);
   if (spec.stack) {
@@ -158,12 +159,13 @@ export function frontView(spec) {
   const over = spec.env.tipOver > 0 || spec.env.topOver > 0;
   const cyl = over ? bad : okc;
   d.poly([[-CYL_R, 0], [CYL_R, 0], [CYL_R, CYL_H], [-CYL_R, CYL_H]], `fill="${cyl}" fill-opacity="0.06" stroke="${cyl}" stroke-width="2" stroke-dasharray="10 6"`);
-  d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, spec.T], [-p.base / 2, spec.T]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
-  d.poly([[-spec.OUT / 2, spec.T], [spec.OUT / 2, spec.T], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
+  const zB = spec.baseT;
+  d.poly([[-p.base / 2, 0], [p.base / 2, 0], [p.base / 2, zB], [-p.base / 2, zB]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.5"');
+  d.poly([[-spec.OUT / 2, zB], [spec.OUT / 2, zB], [spec.OUT / 2, spec.colTop], [-spec.OUT / 2, spec.colTop]], 'fill="#d7b98a" stroke="#6a4b2b" stroke-width="1.5"');
   d.poly([[-65, spec.stack.zL2Bot], [65, spec.stack.zL2Bot], [65, spec.stack.zGearTop], [-65, spec.stack.zGearTop]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2" fill-opacity="0.9"');
   // 左右補強
-  d.poly([[-spec.OUT / 2, spec.T], [-spec.OUT / 2 - GUSSET_LEG, spec.T], [-spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
-  d.poly([[spec.OUT / 2, spec.T], [spec.OUT / 2 + GUSSET_LEG, spec.T], [spec.OUT / 2, spec.T + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
+  d.poly([[-spec.OUT / 2, zB], [-spec.OUT / 2 - GUSSET_LEG, zB], [-spec.OUT / 2, zB + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
+  d.poly([[spec.OUT / 2, zB], [spec.OUT / 2 + GUSSET_LEG, zB], [spec.OUT / 2, zB + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b" stroke-width="1.2"');
   d.circ(0, p.hubZ, p.blade + HUB_R, `fill="none" stroke="${spec.env.tipOver > 0 ? bad : '#1f7a4d'}" stroke-width="3"`);
   d.circ(0, p.hubZ, HUB_R, 'fill="#2f6f9f" stroke="#1d4e73" stroke-width="1.5"');
   for (let k = 0; k < 3; k++) {
@@ -290,7 +292,7 @@ export function explodeView(spec) {
   let z = 28;
   const blocks = [];
   const add = (h, draw, label) => { blocks.push({z, h, draw, label}); z += h + gap; };
-  add(spec.T, (d, z0) => d.poly([[-p.base / 2, z0], [p.base / 2, z0], [p.base / 2, z0 + spec.T], [-p.base / 2, z0 + spec.T]], 'fill="#c4a574" stroke="#6a4b2b"'), '1 底板');
+  add(spec.baseT, (d, z0) => d.poly([[-p.base / 2, z0], [p.base / 2, z0], [p.base / 2, z0 + spec.baseT], [-p.base / 2, z0 + spec.baseT]], 'fill="#c4a574" stroke="#6a4b2b"'), '1 底板');
   add(GUSSET_H, (d, z0) => {
     d.poly([[-spec.OUT / 2, z0], [spec.OUT / 2, z0], [spec.OUT / 2, z0 + 20], [-spec.OUT / 2, z0 + 20]], 'fill="#d7b98a" stroke="#6a4b2b"');
     d.poly([[spec.OUT / 2, z0], [spec.OUT / 2 + 70, z0], [spec.OUT / 2, z0 + GUSSET_H]], 'fill="#c4a574" stroke="#6a4b2b"');
