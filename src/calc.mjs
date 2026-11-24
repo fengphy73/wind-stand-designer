@@ -1,8 +1,8 @@
-// 風力發電底座支架設計器 v1.1.1 — 幾何與力學（瀏覽器與 Node 共用）
+// 風力發電底座支架設計器 v1.1.2 — 幾何與力學（瀏覽器與 Node 共用）
 // 計算方法沿用方案 D 的 calcD.py：夾板體積 × 密度、推力 Ct=0.8、傾倒力矩、懸臂撓度。
 // 座標：+X 迎風（風輪）、−X 順風（尾翼）、Z 向上、Y 向右。單位 mm、g、N。
 
-export const VERSION = '1.1.1';
+export const VERSION = '1.1.2';
 
 export const HUB_R = 35;
 export const OVERHANG = 177.5;          // 轉動面到偏航軸
@@ -60,7 +60,6 @@ export const UPPER_30 = 666;             // 30 倍齒輪組重 5 g
 export const YAW_LIMIT = 170;
 export const CYL_R = 500;
 export const CYL_H = 1000;
-export const SHEET = {w: 600, h: 450};
 export const REF_HUB = 480;
 export const REF_BLADE = 380;
 
@@ -69,7 +68,7 @@ export const DEFAULTS = {
   slotFit: 5.2,
   tube: 50,
   diaphragms: 2,
-  base: 500,
+  base: 440,
   baseT: 7,
   blade: 415,
   gear: '25',

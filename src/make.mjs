@@ -1,7 +1,7 @@
-// 雷切輪廓、600×450 排版、3D 列印實體。紅線切割、藍線雕刻，單位 mm，不另做縮放。
+// 雷切輪廓、依板厚分板排版、3D 列印實體。紅線切割、藍線雕刻，單位 mm，不另做縮放。
 import {
   COLLAR, COL_TENON_W, DIA_TENON_W, DIA_HOLE, GUSSET_H, GUSSET_LEG, GUSSET_TENON,
-  HUB_LEN, HUB_R, ROTOR_X, SHEET, TURN, WIRE, BOOM, GEAR_FRONT_X, GEAR_PLATE, GEAR_EXT,
+  HUB_LEN, HUB_R, ROTOR_X, TURN, WIRE, BOOM, GEAR_FRONT_X, GEAR_PLATE, GEAR_EXT,
   GEAR_HOLE_XS, STUD_XS, DECK, PIN_R, HEX_CORNER, VERSION,
 } from './calc.mjs';
 
@@ -306,25 +306,57 @@ function part(id, name, count, outline, holes, eng, short) {
   return {id, name, count, short, outline, holes, eng, ...b};
 }
 
-export const BASE_MARGIN = 10;
+/** 板邊留白與零件間距，單位 mm。兩種市售板都用這組。 */
+export const SHEET_MARGIN = 5;
+export const SHEET_GAP = 3;
 
-export function layoutSheets(spec) {
-  const parts = laserParts(spec);
-  const base = parts.find(p => p.id === 'base');
-  const pack = parts.filter(p => p.id !== 'base');
-  const gap = 3.5;
-  const margin = 2;
-  const limitW = SHEET.w - margin;
-  const limitH = SHEET.h - margin;
+/** 買得到的雷切板：7 mm 只有 450×900，5 mm 只有 600×900。 */
+export const STOCKS = [
+  {thick: 7, w: 450, h: 900},
+  {thick: 5, w: 600, h: 900},
+];
+
+/** 7 mm：底板、上木板、下木板 L1、L2。其餘雷切件走 5 mm。對不上就回 0，交給頁面提示。 */
+export function stockOf(id) {
+  if (id === 'base' || id === 'upper' || id === 'l1' || id === 'l2') return 7;
+  if (id === 'collar' || id === 'boom' || id === 'gear-lower' || id === 'stop'
+    || id.startsWith('wall-') || id.startsWith('dia-') || id.startsWith('gus-') || id.startsWith('gear-guide-')) return 5;
+  return 0;
+}
+
+function dimText(v) {
+  const n = Math.round(v * 10) / 10;
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
+
+/** 頁面上那一行：需要幾張，或哪個零件超出板材。 */
+export function groupNotice({thick, w, h, count, overflow}) {
+  const bits = [];
+  if (overflow.length) {
+    bits.push(`超出 ${thick} mm 板材 ${w}×${h}：${overflow.join('、')}。這些零件沒有排進去，外形沒有改。`);
+  }
+  if (count > 1) bits.push(`${thick} mm 放不進一張 ${w}×${h}，需要 ${count} 張。`);
+  if (!overflow.length && count === 1) {
+    bits.push(`${thick} mm 共 1 張 ${w}×${h}，零件都在板邊 ${SHEET_MARGIN} mm 以內，間距 ${SHEET_GAP} mm。`);
+  }
+  if (!overflow.length && count === 0) bits.push(`${thick} mm 沒有零件。`);
+  return bits.join('');
+}
+
+/** 同一種板厚的層架排版。放不下就加一張；單件比可用範圍大就列入 overflow，不排到板外。 */
+export function packParts(parts, stock, margin = SHEET_MARGIN, gap = SHEET_GAP) {
+  const usableW = stock.w - 2 * margin;
+  const usableH = stock.h - 2 * margin;
+  const limitX = stock.w - margin;
+  const limitY = stock.h - margin;
   const sheets = [];
   const overflow = [];
 
   function orientations(part) {
     const list = [];
-    if (part.w <= limitW + 0.05 && part.h <= limitH + 0.05) list.push({rot: 0, w: part.w, h: part.h});
-    if (Math.abs(part.w - part.h) > 0.05 && part.h <= limitW + 0.05 && part.w <= limitH + 0.05) {
-      list.push({rot: 90, w: part.h, h: part.w});
-    }
+    const fit = (w, h) => w <= usableW + 0.05 && h <= usableH + 0.05;
+    if (fit(part.w, part.h)) list.push({rot: 0, w: part.w, h: part.h});
+    if (Math.abs(part.w - part.h) > 0.05 && fit(part.h, part.w)) list.push({rot: 90, w: part.h, h: part.w});
     list.sort((a, b) => a.h - b.h || a.w - b.w);
     return list;
   }
@@ -332,14 +364,14 @@ export function layoutSheets(spec) {
   function tryPlace(sheet, part, orient) {
     const pw = orient.w, ph = orient.h;
     for (const row of sheet.rows) {
-      if (row.x + pw <= limitW + 0.05 && ph <= row.h + 0.05) {
+      if (row.x + pw <= limitX + 0.05 && ph <= row.h + 0.05) {
         sheet.items.push({part, rot: orient.rot, placeX: row.x, placeY: row.y});
         row.x += pw + gap;
         return true;
       }
     }
     const y = sheet.rows.length ? sheet.rows[sheet.rows.length - 1].y + sheet.rows[sheet.rows.length - 1].h + gap : margin;
-    if (y + ph <= limitH + 0.05 && margin + pw <= limitW + 0.05) {
+    if (y + ph <= limitY + 0.05 && margin + pw <= limitX + 0.05) {
       sheet.rows.push({y, h: ph, x: margin + pw + gap});
       sheet.items.push({part, rot: orient.rot, placeX: margin, placeY: y});
       return true;
@@ -347,11 +379,11 @@ export function layoutSheets(spec) {
     return false;
   }
 
-  const ordered = [...pack].sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.h - a.h);
+  const ordered = [...parts].sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h) || b.h - a.h);
   for (const part of ordered) {
     const orients = orientations(part);
     if (!orients.length) {
-      overflow.push(`${part.name}（${Math.round(part.w)}×${Math.round(part.h)} mm，大於板材 ${SHEET.w}×${SHEET.h}）`);
+      overflow.push(`${part.name}（${dimText(part.w)}×${dimText(part.h)} mm，大於 ${stock.thick} mm 板材 ${stock.w}×${stock.h}，扣掉板邊 ${margin} mm 後可用 ${usableW}×${usableH} mm）`);
       continue;
     }
     let placed = false;
@@ -362,25 +394,49 @@ export function layoutSheets(spec) {
       if (placed) break;
     }
     if (!placed) {
-      const sheet = {id: sheets.length + 1, items: [], rows: []};
+      const sheet = {items: [], rows: []};
       sheets.push(sheet);
       for (const orient of orients) {
         if (tryPlace(sheet, part, orient)) { placed = true; break; }
       }
       if (!placed) {
         sheets.pop();
-        overflow.push(`${part.name}（${Math.round(part.w)}×${Math.round(part.h)} mm）`);
+        overflow.push(`${part.name}（${dimText(part.w)}×${dimText(part.h)} mm，${stock.thick} mm 的 ${stock.w}×${stock.h} 排不下）`);
       }
     }
   }
 
-  const area = SHEET.w * SHEET.h;
-  for (const sheet of sheets) {
+  const area = stock.w * stock.h;
+  sheets.forEach((sheet, i) => {
     const used = sheet.items.reduce((s, it) => s + it.part.w * it.part.h, 0);
+    sheet.id = `${stock.thick}-${i + 1}`;
     sheet.util = used / area;
     sheet.partNames = sheet.items.map(it => it.part.name);
-  }
-  return {sheets, overflow, parts, base, sheet: {w: SHEET.w, h: SHEET.h}};
+    sheet.w = stock.w;
+    sheet.h = stock.h;
+    sheet.thick = stock.thick;
+  });
+  return {sheets, overflow};
+}
+
+export function layoutSheets(spec) {
+  const parts = laserParts(spec);
+  const groups = STOCKS.map(stock => {
+    const mine = parts.filter(p => stockOf(p.id) === stock.thick);
+    const packed = packParts(mine, stock);
+    const group = {thick: stock.thick, w: stock.w, h: stock.h, ...packed, count: packed.sheets.length};
+    group.notice = groupNotice(group);
+    return group;
+  });
+  const unassigned = parts
+    .filter(p => stockOf(p.id) === 0)
+    .map(p => `${p.name}（沒有對應的 7 mm 或 5 mm 板）`);
+  return {
+    parts,
+    groups,
+    unassigned,
+    overflow: [...groups.flatMap(g => g.overflow), ...unassigned],
+  };
 }
 
 function mapLocal(item, p) {
@@ -440,43 +496,35 @@ function renderSheet(items, w, h, title, desc) {
 
 export function laserSvgs(spec) {
   const lay = layoutSheets(spec);
-  const {sheets, overflow, base} = lay;
-  const n = sheets.length;
-  const pack = sheets.map(sh => {
-    const pct = Math.round(sh.util * 1000) / 10;
-    const title = `第 ${sh.id} 張／共 ${n} 張　${SHEET.w}×${SHEET.h} mm　零件 ${sh.items.length}　外框利用率 ${pct}%`;
-    const desc = `風力發電底座支架設計器 v${VERSION} ${title}。1 單位 = 1 mm，請以實際尺寸匯入，不要為了軟體比例另做縮放。紅 #ff0000 切割，藍 #0000ff 雕刻。原點在左上角，Y 向下。`;
-    return {
-      id: sh.id, title, svg: renderSheet(sh.items, SHEET.w, SHEET.h, title, desc), util: sh.util, w: SHEET.w, h: SHEET.h,
-      partNames: sh.partNames,
-      items: sh.items.map(it => ({id: it.part.id, name: it.part.name, w: it.part.w, h: it.part.h, rot: it.rot, placeX: it.placeX, placeY: it.placeY})),
-    };
+  const groups = lay.groups.map(g => {
+    const n = g.count;
+    const sheets = g.sheets.map((sh, i) => {
+      const pct = Math.round(sh.util * 1000) / 10;
+      const title = `${g.thick} mm 第 ${i + 1} 張／共 ${n} 張　${g.w}×${g.h} mm　零件 ${sh.items.length}　外框利用率 ${pct}%`;
+      const desc = `風力發電底座支架設計器 v${VERSION} ${title}。板邊留 ${SHEET_MARGIN} mm，零件間距 ${SHEET_GAP} mm。1 單位 = 1 mm，請以實際尺寸匯入，不要為了軟體比例另做縮放。紅 #ff0000 切割，藍 #0000ff 雕刻。原點在左上角，Y 向下。`;
+      return {
+        id: sh.id, title, svg: renderSheet(sh.items, g.w, g.h, title, desc), util: sh.util, w: g.w, h: g.h, thick: g.thick,
+        partNames: sh.partNames,
+        items: sh.items.map(it => ({id: it.part.id, name: it.part.name, w: it.part.w, h: it.part.h, rot: it.rot, placeX: it.placeX, placeY: it.placeY})),
+      };
+    });
+    return {...g, sheets, notice: groupNotice({thick: g.thick, w: g.w, h: g.h, count: n, overflow: g.overflow})};
   });
-  const edge = Math.round(base.w);
-  const notice = `底板需另用大板切割（至少 ${edge}×${edge} 加邊距）`;
-  const bw = Math.ceil(base.w + BASE_MARGIN * 2);
-  const bh = Math.ceil(base.h + BASE_MARGIN * 2);
-  const baseUtil = (base.w * base.h) / (bw * bh);
-  const baseTitle = `底板大板　${bw}×${bh} mm　零件 1　外框利用率 ${Math.round(baseUtil * 1000) / 10}%`;
-  const baseItem = {part: base, rot: 0, placeX: BASE_MARGIN, placeY: BASE_MARGIN};
-  const baseSheet = {
-    id: 'base', title: baseTitle, notice, w: bw, h: bh, util: baseUtil,
-    svg: renderSheet([baseItem], bw, bh, baseTitle, `${notice}。風力發電底座支架設計器 v${VERSION}。圖紙每邊留 ${BASE_MARGIN} mm。1 單位 = 1 mm，請以實際尺寸匯入。紅 #ff0000 切割，藍 #0000ff 雕刻。`),
-    partNames: [base.name],
-  };
   return {
-    overflow,
-    count: n,
-    sheet: {w: SHEET.w, h: SHEET.h},
-    sheets: pack,
-    base: baseSheet,
+    groups,
+    unassigned: lay.unassigned,
+    overflow: lay.overflow,
+    count: groups.reduce((s, g) => s + g.count, 0),
   };
 }
 
 export function sheetBounds(item) {
-  const {part, rot = 0, placeX, placeY} = item;
-  if (rot === 90) return {x0: placeX, y0: placeY, x1: placeX + part.h, y1: placeY + part.w, w: part.h, h: part.w};
-  return {x0: placeX, y0: placeY, x1: placeX + part.w, y1: placeY + part.h, w: part.w, h: part.h};
+  const rot = item.rot || 0;
+  const {placeX, placeY} = item;
+  const w = item.part ? item.part.w : item.w;
+  const h = item.part ? item.part.h : item.h;
+  if (rot === 90) return {x0: placeX, y0: placeY, x1: placeX + h, y1: placeY + w, w: h, h: w};
+  return {x0: placeX, y0: placeY, x1: placeX + w, y1: placeY + h, w, h};
 }
 
 // ── 3D 列印 ──

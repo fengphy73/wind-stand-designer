@@ -36,18 +36,23 @@ ok(over.params.blade === 450, '葉長上限允許 450');
 
 const b590 = compute({base: 590});
 const b600 = compute({base: 600});
-ok(b590.sf[4].SF0 > d.sf[4].SF0 && b590.sf[4].SF0 < b600.sf[4].SF0, `底板 590 的 4 m/s 係數 ${b590.sf[4].SF0.toFixed(2)}，介於 500 與 600 之間`);
+ok(b590.sf[4].SF0 > d.sf[4].SF0 && b590.sf[4].SF0 < b600.sf[4].SF0, `底板 590 的 4 m/s 係數 ${b590.sf[4].SF0.toFixed(2)}，介於預設 440 與 600 之間`);
 
-ok(VERSION === '1.1.1', '版本 ' + VERSION);
+ok(VERSION === '1.1.2', '版本 ' + VERSION);
 ok(GEAR_LAYERS === 2 && d.params.gearPlateT === 5 && d.stack.gearTotal === 10, `齒輪底板 ${d.stack.gearLayers} 片 × ${d.stack.gearEach} mm，總厚 ${d.stack.gearTotal}`);
 ok(!d.pending.join('').includes('單層厚') && !d.pending.join('').includes('厚 5') && d.pending.join('').includes('寬 100') && d.pending.join('').includes('內框'), '厚度已不是待確認，寬度與內框仍是');
 ok(d.deck.len === 130 && d.deck.thick === 7, `轉盤木板 ${d.deck.len}×${d.deck.thick}`);
 ok(d.turnNote.includes('方柱') && d.nutGap.rawGapPoint < 2 && d.nutGap.gapFlat > 3, `螺帽間隙原 ${d.nutGap.rawGapPoint.toFixed(1)}、調整後 ${d.nutGap.gapFlat.toFixed(1)}`);
 ok(d.overhang === 177.5 && d.deck.yawFromFront === 102.5, `懸伸 ${d.overhang}、偏航軸距前緣 ${d.deck.yawFromFront}`);
-ok(d.params.base === 500 && d.params.baseT === 7 && d.body0 === 7, `底板 ${d.params.base}×${d.params.baseT}，榫長 ${d.body0}`);
+ok(d.params.base === 440 && d.params.baseT === 7 && d.body0 === 7, `底板 ${d.params.base}×${d.params.baseT}，榫長 ${d.body0}`);
 ok(Math.round(d.params.hubZ) === 507 && Math.abs((d.params.hubZ - d.baseT) - 500) < 0.2, `輪轂絕對高 ${d.params.hubZ}，離底板頂面 ${(d.params.hubZ - d.baseT).toFixed(1)}`);
-ok(d.env.tipR < 500 && Math.abs(d.clearance.abovePlate - 50) < 0.2, `葉尖半徑 ${d.env.tipR.toFixed(2)}，離底板頂面 ${d.clearance.abovePlate.toFixed(1)}`);
-ok(d.sfAt(4, 0) > 1.9 && d.sfAt(4, 0) < 2 && d.sfAt(5, 0) > 1.2 && d.sfAt(5, 0) < 1.3, `4 m/s ${d.sfAt(4, 0).toFixed(3)}、5 m/s ${d.sfAt(5, 0).toFixed(3)}、6 m/s ${d.sfAt(6, 0).toFixed(3)}，整機 ${Math.round(d.totalMass)} g`);
+ok(d.params.blade === 415 && Math.abs(d.clearance.abovePlate - 50) < 0.2, `葉長 ${d.params.blade}，葉尖離底板頂面 ${d.clearance.abovePlate.toFixed(1)}`);
+ok(Math.abs(d.env.topZ - 957) < 0.05, `總高 ${d.env.topZ}`);
+ok(d.env.radiusOk && d.env.topOk && d.env.baseR < 500, `仍在圓柱內：葉尖 ${d.env.tipR.toFixed(2)}、尾翼 ${d.env.tailR.toFixed(1)}、底座角 ${d.env.baseR.toFixed(1)}、最高 ${d.env.topZ.toFixed(1)}`);
+ok(Math.abs(d.totalMass - 1769) < 1, `整機 ${d.totalMass.toFixed(1)} g`);
+ok(Math.abs(d.sf[4].SF0 - 1.541) < 0.005 && Math.abs(d.sf[4].SF1 - 2.413) < 0.005, `4 m/s ${d.sf[4].SF0.toFixed(3)}，加 1 kg ${d.sf[4].SF1.toFixed(3)}`);
+const b500 = compute({base: 500});
+ok(b500.sfAt(4, 0) > 1.9 && b500.sfAt(4, 0) < 2 && b500.sfAt(5, 0) > 1.2 && b500.sfAt(5, 0) < 1.3, `底板 500 仍是原公式：4 m/s ${b500.sfAt(4, 0).toFixed(3)}、5 m/s ${b500.sfAt(5, 0).toFixed(3)}，整機 ${Math.round(b500.totalMass)} g`);
 const g30 = compute({gear: '30'});
 ok(g30.zT === d.zT && Math.round(g30.params.hubZ - d.params.hubZ) === 5, `30 倍塔頂不變 ${g30.zT}，主軸高 5 mm 到 ${g30.params.hubZ}`);
 
@@ -56,5 +61,6 @@ ok(badIn.warnings.length >= 2 && badIn.warnings.every(w => /[\u4e00-\u9fff]/.tes
 
 function round1(v) { return Math.round(v * 10) / 10; }
 
+console.log(`量測 底板 ${d.params.base}×${d.params.base}×${d.baseT} 整機 ${d.totalMass.toFixed(4)} g 4m/s ${d.sf[4].SF0.toFixed(6)} 加1kg ${d.sf[4].SF1.toFixed(6)} 輪轂 ${d.params.hubZ} 葉長 ${d.params.blade} 總高 ${d.env.topZ} 葉尖距底板 ${d.clearance.abovePlate}`);
 if (fail) { console.log(fail + ' 項失敗'); process.exit(1); }
 console.log('計算全部通過');

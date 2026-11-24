@@ -3,9 +3,9 @@ import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls.js';
 import Module from 'manifold-3d';
 import {
   VERSION, DEFAULTS, LIMITS, LABELS, compute, autoFit, referenceCalcD, round1, round2, round3,
-  HUB_R, ROTOR_X, YAW_LIMIT, CYL_R, CYL_H, TURN, GEAR_FRONT_X, GEAR_PLATE, GEAR_OD_80, BOOM, SHEET,
+  HUB_R, ROTOR_X, YAW_LIMIT, CYL_R, CYL_H, TURN, GEAR_FRONT_X, GEAR_PLATE, GEAR_OD_80, BOOM,
 } from './calc.mjs';
-import {laserSvgs, buildPrinted, buildLaserSolids, placePrinted, gearCorrectionSvg} from './make.mjs';
+import {laserSvgs, buildPrinted, buildLaserSolids, placePrinted, gearCorrectionSvg, STOCKS, SHEET_MARGIN, SHEET_GAP} from './make.mjs';
 import {meshArrays, binarySTL, makeZip, edgeCheck} from './mesh.mjs';
 import {frontView, sideView, topView, sfChart, explodeView, STEPS} from './draw.mjs';
 
@@ -14,7 +14,7 @@ const app = $('#app');
 app.innerHTML = `
 <header>
   <h1>風力發電底座支架設計器 <small>v${VERSION}</small></h1>
-  <p>KidWind 2026 亞洲聯賽（台灣版 AESEA v2.4）方案 D：5 mm 夾板雷切 50×50 指接方柱、底板、偏航轉盤與加長輪轂。預覽和 STL 用同一個網格。</p>
+  <p>KidWind 2026 亞洲聯賽（台灣版 AESEA v2.4）方案 D：5 mm 夾板雷切 50×50 指接方柱、7 mm 底板、偏航轉盤與加長輪轂。預覽和 STL 用同一個網格。</p>
 </header>
 <main>
   <section class="panel" id="form"></section>
@@ -53,10 +53,10 @@ app.innerHTML = `
       </div>
     </section>
     <section class="panel card" id="view-laser">
-      <h2 id="laser-title">雷切排版（${SHEET.w}×${SHEET.h} mm，實際尺寸）</h2>
+      <h2 id="laser-title">雷切排版（7 mm ${STOCKS[0].w}×${STOCKS[0].h}、5 mm ${STOCKS[1].w}×${STOCKS[1].h}，實際尺寸）</h2>
       <div id="laser"></div>
       <div class="btns" id="laser-btns"></div>
-      <p class="note">紅線切割、藍線與藍字雕刻。檔案以 mm 為單位，請照實際尺寸匯入，不要另外縮放。預覽為了塞進畫面才縮小，下載檔不會縮。一張排不下就自動分成多張。</p>
+      <p class="note">紅線切割、藍線與藍字雕刻。檔案以 mm 為單位，請照實際尺寸匯入，不要另外縮放。預覽為了塞進畫面才縮小，下載檔不會縮。7 mm 零件（底板、上木板、下木板 L1、L2）用 ${STOCKS[0].w}×${STOCKS[0].h} 板；5 mm 零件（壁板、內隔板與備品、三角補強片、柱腳套框、尾桿、齒輪下板加長、尾桿導槽條、限位擋塊）用 ${STOCKS[1].w}×${STOCKS[1].h} 板。板邊留 ${SHEET_MARGIN} mm，零件間距 ${SHEET_GAP} mm。放不下時會寫出需要幾張，或哪個零件超出板材，不會排到板外。</p>
     </section>
     <section class="panel card" id="view-parts">
       <h2>零件與下載</h2>
@@ -268,20 +268,34 @@ function paint2d() {
   $('#steps').innerHTML = STEPS.map(s => `<li>${s}</li>`).join('');
 
   sheets = laserSvgs(spec);
-  $('#laser-title').textContent = `雷切排版（板材 ${sheets.sheet.w}×${sheets.sheet.h} mm，共 ${sheets.count} 張）`;
-  const bsh = sheets.base;
-  $('#laser').innerHTML = `<article class="sheet-block" data-sheet="base"><div class="warn">${bsh.notice}</div><h3 style="margin:8px 0 4px;font-size:14px">${bsh.title}</h3><p class="note">${bsh.partNames.join('、')}</p><div class="laser">${bsh.svg.replace(/^<\?xml[^>]*>\s*/, '')}</div></article>`
-    + sheets.sheets.map(sh => `<article class="sheet-block" data-sheet="${sh.id}"><h3 style="margin:8px 0 4px;font-size:14px">${sh.title}</h3><p class="note">${sh.partNames.join('、')}</p><div class="laser">${sh.svg.replace(/^<\?xml[^>]*>\s*/, '')}</div></article>`).join('')
-    + (sheets.overflow.length ? `<div class="warn">放不下：${sheets.overflow.join('、')}。零件外形沒有改。</div>` : '');
-  $('#laser-btns').innerHTML = `<button type="button" data-svg="base">下載底板大板 SVG</button>`
-    + sheets.sheets.map((sh, i) => `<button type="button" data-svg="${i}">下載第 ${sh.id} 張 SVG</button>`).join('');
+  const byThick = Object.fromEntries(sheets.groups.map(g => [g.thick, g]));
+  $('#laser-title').textContent = `雷切排版（7 mm ${byThick[7].w}×${byThick[7].h} mm 共 ${byThick[7].count} 張、5 mm ${byThick[5].w}×${byThick[5].h} mm 共 ${byThick[5].count} 張）`;
+  const role = {
+    7: '底板、上木板、下木板 L1、下木板 L2',
+    5: '壁板、內隔板與備品、三角補強片、柱腳套框、尾桿、齒輪下板加長、尾桿導槽條、限位擋塊',
+  };
+  $('#laser').innerHTML = sheets.groups.map(g => {
+    const bad = g.overflow.length || g.count > 1;
+    const extra = g.overflow.length ? `，另有 ${g.overflow.length} 件超出板材` : '';
+    const blocks = g.sheets.map(sh => `<article class="sheet-block" data-sheet="${sh.id}"><h3 style="margin:8px 0 4px;font-size:14px">${sh.title}</h3><p class="note">${sh.partNames.join('、')}</p><div class="laser">${sh.svg.replace(/^<\?xml[^>]*>\s*/, '')}</div></article>`).join('');
+    return `<section data-stock="${g.thick}">
+      <h3 style="margin:10px 0 4px;font-size:15px">${g.thick} mm 板材 ${g.w}×${g.h} mm，共 ${g.count} 張${extra}</h3>
+      <p class="note">這一板：${role[g.thick]}。板邊留 ${SHEET_MARGIN} mm，零件間距 ${SHEET_GAP} mm。</p>
+      <div class="${bad ? 'warn' : 'oknote'}">${g.notice}</div>
+      ${blocks}
+    </section>`;
+  }).join('') + (sheets.unassigned.length ? `<div class="warn">沒有對應板材：${sheets.unassigned.join('、')}。</div>` : '');
+  $('#laser-btns').innerHTML = sheets.groups.flatMap(g => g.sheets.map(sh => {
+    const n = sh.id.split('-')[1];
+    return `<button type="button" data-svg="${sh.id}">下載 ${g.thick} mm 第 ${n} 張（${sh.w}×${sh.h}）</button>`;
+  })).join('');
 
   const woodRows = Object.entries(spec.wood).map(([k, v]) => `<tr><td>${k}</td><td>${Math.round(v)}</td><td>夾板估算</td></tr>`).join('');
   $('#bom').innerHTML = `<table><thead><tr><th>項目</th><th>估重 g</th><th>說明</th></tr></thead><tbody>${woodRows}
     <tr><td>上半部（齒輪、葉片、尾、轉盤下板）</td><td>${spec.upper}</td><td>沿用方案 D，不隨葉長增減</td></tr>
     <tr><td>合計</td><td>${Math.round(spec.totalMass)}</td><td>4 m/s 安全係數 ${sf4.toFixed(2)}</td></tr>
     </tbody></table>
-    <p class="note">雷切 ${state.thickness} mm：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、尾桿 30×5×350、限位擋塊、齒輪下板（5 mm，加長到 270）、導槽條 2。底板 ${state.base}×${state.base}×${state.baseT} 另用大板。雷切 7 mm：上木板、L1、L2，各 130×130。另檔：齒輪下板加長與偏航軸 Ø20（教具老師修正；寬度、孔位、內框待確認）。上板不加長，原齒輪組設計不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
+    <p class="note">雷切 7 mm（${STOCKS[0].w}×${STOCKS[0].h}，板邊 ${SHEET_MARGIN} mm、間距 ${SHEET_GAP} mm）：底板 ${state.base}×${state.base}×${state.baseT}、上木板、L1、L2，木板各 130×130×${state.deckT}。雷切 5 mm（${STOCKS[1].w}×${STOCKS[1].h}）：壁板 4、隔板 ${state.diaphragms}＋備品、補強 4、套框、尾桿 30×5×350、限位擋塊、齒輪下板（5 mm，加長到 270）、導槽條 2。另檔：齒輪下板加長與偏航軸 Ø20（教具老師修正；寬度、孔位、內框待確認）。上板不加長，原齒輪組設計不改。列印：加長輪轂，六角孔對角 ${state.shaftD} mm。擋銷用 M4 螺栓。</p>`;
 }
 
 function clearGroup(g) {
@@ -440,12 +454,9 @@ function save(data, name, type) {
 $('#laser-btns').onclick = e => {
   const b = e.target.closest('[data-svg]');
   if (!b || !sheets) return;
-  const key = b.dataset.svg;
-  const sh = key === 'base' ? sheets.base : sheets.sheets[+key];
+  const sh = sheets.groups.flatMap(g => g.sheets).find(s => s.id === b.dataset.svg);
   if (!sh) return;
-  const name = key === 'base'
-    ? `底板_${spec.params.base}x${spec.params.base}x${spec.params.baseT}_大板${sh.w}x${sh.h}.svg`
-    : `底座支架_${sh.id}_${SHEET.w}x${SHEET.h}.svg`;
+  const name = `雷切${sh.thick}mm_第${sh.id.split('-')[1]}張_${sh.w}x${sh.h}.svg`;
   save(new TextEncoder().encode(sh.svg), name, 'image/svg+xml');
 };
 document.querySelectorAll('[data-stl]').forEach(b => b.onclick = () => {
