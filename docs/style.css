@@ -43,8 +43,8 @@ table{border-collapse:collapse;width:100%;font-size:13px}
 th,td{border-bottom:1px solid #eadfce;padding:5px 6px;text-align:left;vertical-align:top}
 .steps{margin:0;padding-left:1.2em}
 .steps li{margin:4px 0;line-height:1.5}
-.laser{background:#fff;border:1px solid #eadfce;border-radius:8px;overflow:auto;max-height:640px}
-.laser svg{width:100%;height:auto;display:block;background:#fff}
+.laser{background:#fff;border:1px solid #eadfce;border-radius:8px;overflow:auto}
+.laser svg{width:auto;max-width:100%;max-height:720px;height:auto;display:block;background:#fff}
 .laser svg #cut{stroke-width:1.6px;vector-effect:non-scaling-stroke}
 .laser svg #engrave{stroke-width:1px;vector-effect:non-scaling-stroke}
 .laser svg text{font-size:12px}

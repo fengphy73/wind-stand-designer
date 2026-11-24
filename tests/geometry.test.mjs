@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import Module from 'manifold-3d';
-import {compute, SHEET, GEAR_FRONT_X, GEAR_PLATE, BOOM} from '../src/calc.mjs';
-import {laserSvgs, layoutSheets, sheetBounds, wallOutline, buildPrinted, buildLaserSolids, limitAngle, gearCorrectionSvg, BASE_MARGIN} from '../src/make.mjs';
+import {compute, GEAR_FRONT_X, GEAR_PLATE, BOOM} from '../src/calc.mjs';
+import {laserSvgs, layoutSheets, sheetBounds, wallOutline, buildPrinted, buildLaserSolids, limitAngle, gearCorrectionSvg, SHEET_MARGIN, SHEET_GAP} from '../src/make.mjs';
 import {edgeCheck, binarySTL} from '../src/mesh.mjs';
 import {frontView, sideView, topView, sfChart} from '../src/draw.mjs';
 
@@ -9,39 +9,56 @@ let fail = 0;
 const ok = (c, msg) => { console.log((c ? 'PASS ' : 'FAIL ') + msg); if (!c) fail++; };
 const spec = compute({});
 const lay = layoutSheets(spec);
-ok(lay.overflow.length === 0 && !lay.sheets.some(s => s.items.some(i => i.part.id === 'base')), `600×450 共 ${lay.sheets.length} 張，不含底板`);
-ok(lay.base && Math.abs(lay.base.w - 500) < 0.1 && Math.abs(lay.base.h - 500) < 0.1, `底板外框 ${lay.base.w.toFixed(0)}×${lay.base.h.toFixed(0)}`);
-ok(lay.sheets.some(s => s.items.some(i => i.part.id === 'gear-lower')), '加長下板有排進板材');
-const gus = lay.sheets.flatMap(s => s.items).find(i => i.part.id === 'gus-0').part;
+const g7 = lay.groups.find(g => g.thick === 7);
+const g5 = lay.groups.find(g => g.thick === 5);
+ok(g7.sheets.length === 1 && g7.overflow.length === 0 && g7.w === 450 && g7.h === 900, `7 mm ${g7.w}×${g7.h} 共 ${g7.sheets.length} 張`);
+ok(g5.sheets.length === 1 && g5.overflow.length === 0 && g5.w === 600 && g5.h === 900, `5 mm ${g5.w}×${g5.h} 共 ${g5.sheets.length} 張`);
+const ids7 = g7.sheets.flatMap(s => s.items.map(i => i.part.id));
+ok(ids7.length === 4 && ['base', 'upper', 'l1', 'l2'].every(id => ids7.includes(id)), `7 mm 零件 ${ids7.join(',')}`);
+ok(g5.sheets.some(s => s.items.some(i => i.part.id === 'gear-lower')), '加長下板有排進 5 mm 板');
+const gus = g5.sheets.flatMap(s => s.items).find(i => i.part.id === 'gus-0').part;
 ok(Math.abs(gus.h - (115 + 7)) < 0.2 || Math.abs(gus.w - (115 + 7)) < 0.2, `補強片含 7 mm 底板榫，外框 ${gus.w.toFixed(1)}×${gus.h.toFixed(1)}`);
-const names = lay.sheets.flatMap(s => s.items.map(i => i.part.name));
+const names = g5.sheets.flatMap(s => s.items.map(i => i.part.name));
 ok(names.filter(n => n.startsWith('壁板')).length === 4, '壁板 4 片');
 ok(names.filter(n => n === '內隔板').length === 2, '隔板 2 片（另有備品）');
 ok(names.filter(n => n === '三角補強片').length === 4, '補強片 4 片');
-ok(names.some(n => n.startsWith('上木板')) && names.some(n => n.startsWith('下木板 L1')) && names.some(n => n.startsWith('下木板 L2')), '上木板與 L1、L2');
-const up = lay.sheets.flatMap(s => s.items).find(i => i.part.id === 'upper').part;
+const up = g7.sheets.flatMap(s => s.items).find(i => i.part.id === 'upper').part;
 ok(Math.abs(up.w - 130) < 0.1 && Math.abs(up.h - 130) < 0.1 && up.holes.length >= 12, `上木板 ${up.w.toFixed(0)}，孔 ${up.holes.length}`);
-let overlap = 0, outside = 0;
-for (const sh of lay.sheets) {
-  const bs = sh.items.map(it => ({n: it.part.name, ...sheetBounds(it)}));
-  for (const b of bs) if (b.x0 < -0.05 || b.y0 < -0.05 || b.x1 > SHEET.w + 0.05 || b.y1 > SHEET.h + 0.05) outside++;
-  for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
-    const a = bs[i], b = bs[j];
-    const sep = a.x1 <= b.x0 + 0.4 || b.x1 <= a.x0 + 0.4 || a.y1 <= b.y0 + 0.4 || b.y1 <= a.y0 + 0.4;
-    if (!sep) overlap++;
+function pairGap(a, b) {
+  const xGap = Math.max(a.x0, b.x0) - Math.min(a.x1, b.x1);
+  const yGap = Math.max(a.y0, b.y0) - Math.min(a.y1, b.y1);
+  if (xGap > 0 && yGap > 0) return Math.hypot(xGap, yGap);
+  if (xGap > 0) return xGap;
+  if (yGap > 0) return yGap;
+  return Math.min(xGap, yGap);
+}
+let overlap = 0, outside = 0, tight = 0;
+for (const group of lay.groups) {
+  for (const sh of group.sheets) {
+    const bs = sh.items.map(it => ({n: it.part.name, ...sheetBounds(it)}));
+    for (const b of bs) {
+      if (b.x0 < SHEET_MARGIN - 0.05 || b.y0 < SHEET_MARGIN - 0.05 || b.x1 > group.w - SHEET_MARGIN + 0.05 || b.y1 > group.h - SHEET_MARGIN + 0.05) outside++;
+    }
+    for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+      const gap = pairGap(bs[i], bs[j]);
+      if (gap < SHEET_GAP - 0.05) { tight++; if (gap <= 0) overlap++; }
+    }
   }
 }
-ok(overlap === 0 && outside === 0, `重疊 ${overlap}、超出紙張 ${outside}`);
+ok(overlap === 0 && outside === 0 && tight === 0, `重疊 ${overlap}、越出板邊 ${SHEET_MARGIN} mm ${outside}、間距不足 ${SHEET_GAP} mm ${tight}`);
 
 const svg = laserSvgs(spec);
-for (const sh of svg.sheets) {
-  ok(sh.svg.includes(`width="${SHEET.w}mm"`) && sh.svg.includes(`height="${SHEET.h}mm"`) && sh.svg.includes(`viewBox="0 0 ${SHEET.w} ${SHEET.h}"`) && sh.title.includes('利用率'), `${sh.title} 是 ${SHEET.w}×${SHEET.h} mm`);
-  ok(sh.svg.includes('#ff0000') && sh.svg.includes('#0000ff'), `${sh.title} 紅切藍雕`);
-  ok((sh.svg.match(/<path /g) || []).length > 8, `${sh.title} 的切割線是 path，不是純文字`);
-  ok(!/scale\s*\(/i.test(sh.svg) && !sh.svg.includes('transform="matrix'), `${sh.title} 沒有另做縮放`);
+for (const group of svg.groups) {
+  ok(group.sheets.length === 1, `${group.thick} mm 輸出 ${group.sheets.length} 張`);
+  for (const sh of group.sheets) {
+    ok(sh.svg.includes(`width="${group.w}mm"`) && sh.svg.includes(`height="${group.h}mm"`) && sh.svg.includes(`viewBox="0 0 ${group.w} ${group.h}"`) && sh.title.includes('利用率'), `${sh.title}`);
+    ok(sh.svg.includes('#ff0000') && sh.svg.includes('#0000ff'), `${sh.title} 紅切藍雕`);
+    ok((sh.svg.match(/<path /g) || []).length > 8, `${sh.title} 的切割線是 path，不是純文字`);
+    ok(!/scale\s*\(/i.test(sh.svg) && !sh.svg.includes('transform="matrix'), `${sh.title} 沒有另做縮放`);
+    ok(!sh.title.includes('大板') && !sh.svg.includes('大板') && !sh.svg.includes('520×520'), `${sh.title} 不再用大板`);
+  }
 }
-const baseSvg = svg.base;
-ok(baseSvg.notice.includes('底板需另用大板切割（至少 500×500 加邊距）') && baseSvg.svg.includes(`width="${baseSvg.w}mm"`) && baseSvg.w === 500 + BASE_MARGIN * 2, `底板大板 ${baseSvg.w}×${baseSvg.h}，${baseSvg.notice}`);
+ok(!svg.overflow.length && svg.groups.every(g => g.notice.includes('共 1 張')), svg.groups.map(g => g.notice).join(' / '));
 
 const wall = wallOutline(spec);
 const at = y => wall.filter(p => Math.abs(p[1] - y) < 0.15);

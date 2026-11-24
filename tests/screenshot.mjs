@@ -31,7 +31,10 @@ try {
   const sf4 = await page.$eval('[data-k="sf4"]', el => el.textContent);
   ok(Number(sf4) > 1.5, `預設 4 m/s 係數 ${sf4} 大於 1.5`);
   const laserTitle = await page.$eval('#laser-title', el => el.textContent);
-  ok(laserTitle.includes('600×450') && /共\s+\d+\s+張/.test(laserTitle), '排版標題 ' + laserTitle);
+  ok(laserTitle.includes('7 mm 450×900 mm 共 1 張') && laserTitle.includes('5 mm 600×900 mm 共 1 張'), '排版標題 ' + laserTitle);
+  ok(text.includes('440×440×7'), '摘要寫出底板 440×440×7');
+  const total = await page.$eval('[data-k="total"]', el => el.textContent.trim());
+  ok(total === '1769', '畫面上的整機重量 ' + total);
   ok(text.includes('2 片') && text.includes('總厚 10'), '摘要寫出兩片各 5 mm');
   const shots = [
     ['01-summary', '#summary'],
@@ -60,6 +63,11 @@ try {
   const warn = await page.$eval('#summary', el => el.innerText);
   ok(warn.includes('超出') && /超出圓柱半徑\s+\d/.test(warn), '葉長 450 會紅字寫出超出多少');
   await (await page.$('#summary')).screenshot({path: `${outDir}/08-over.png`});
+  await page.evaluate(() => window.__wsd.set({base: 500, blade: 415}));
+  await page.waitForFunction(() => document.querySelector('#laser')?.innerText.includes('超出'), {timeout: 20000});
+  const laserWarn = await page.$eval('#laser', el => el.innerText);
+  ok(laserWarn.includes('超出') && laserWarn.includes('底板') && laserWarn.includes('450×900'), '底板 500 會寫出超出 7 mm 板');
+  await (await page.$('#view-laser')).screenshot({path: `${outDir}/09-base-over.png`});
   const canvas = await page.$('#canvas canvas');
   const blank = await canvas.evaluate(c => {
     const ctx = c.getContext('webgl2') || c.getContext('webgl');
